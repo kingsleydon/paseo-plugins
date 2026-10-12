@@ -40,13 +40,24 @@ const MIN_TURNS_OPTIONS = [
 ] as const;
 
 const GENERATOR_OPTIONS = [
-  { label: "Auto", value: "auto" },
-  { label: "Paseo order", value: "metadata" },
+  { label: "Same as agent", value: "auto" },
+  { label: "Metadata model", value: "metadata" },
   { label: "Claude Haiku", value: "claude:haiku" },
   { label: "Codex GPT-6-Luna", value: "codex:gpt-6-luna" },
   { label: "Codex default", value: "codex:" },
   { label: "OpenCode default", value: "opencode:" },
 ] as const;
+
+/** Explains the selected option, like Paseo's own Metadata generation page. */
+const GENERATOR_HINTS: Record<string, string> = {
+  auto: "Recaps use the agent's own provider, so the conversation stays with the vendor you chose. If it is unavailable, the Metadata generation model is used.",
+  metadata: "Recaps use the model from Settings → Metadata generation, the one Paseo uses for titles and commit messages.",
+  "claude:haiku": "Recaps always use Claude Haiku.",
+  "codex:gpt-6-luna": "Recaps always use Codex GPT-6-Luna.",
+  "codex:": "Recaps always use Codex's default model.",
+  "opencode:": "Recaps always use OpenCode's default model.",
+};
+const GENERATOR_HINT_SUFFIX = " Runs the provider's CLI on this computer with your existing login.";
 
 function generatorValue(generator: RecapSettings["generator"]): string {
   return typeof generator === "string" ? generator : `${generator.provider}:${generator.model ?? ""}`;
@@ -139,6 +150,7 @@ export function RecapSettingsScreen({ theme }: PluginSurfaceProps) {
           />
           <SettingsSwitch
             label="Recap subagents"
+            hint="Also recap agents that other agents start."
             value={values.includeSubagents}
             disabled={disabled || !values.autoRecap}
             onValueChange={(includeSubagents) => update({ includeSubagents })}
@@ -156,7 +168,7 @@ export function RecapSettingsScreen({ theme }: PluginSurfaceProps) {
         <SettingsCard>
           <SettingsSelect
             label="Recap model"
-            hint="Auto uses the agent's own provider first, then Paseo's metadata model order. Runs the provider's CLI with your existing login."
+            hint={(GENERATOR_HINTS[generator] ?? `Recaps always use ${generator}.`) + GENERATOR_HINT_SUFFIX}
             value={generator}
             options={withCurrent(GENERATOR_OPTIONS, generator, generator)}
             disabled={disabled}
