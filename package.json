@@ -1,7 +1,7 @@
 {
   "name": "paseo-recap",
-  "version": "0.2.0",
-  "description": "Provider-agnostic agent recaps for Paseo, like Claude Code's session recap.",
+  "version": "0.2.1",
+  "description": "Writes a short recap of each agent's goal, progress, and next step after every turn, like Claude Code's session recap.",
   "license": "MIT",
   "files": [
     "paseo-plugin.json",
@@ -43,5 +43,6 @@
     "paseo",
     "paseo-plugin",
     "recap"
-  ]
+  ],
+  "author": "Kingsley (https://github.com/kingsleydon)"
 }
