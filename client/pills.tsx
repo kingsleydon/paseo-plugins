@@ -29,133 +29,136 @@ function pillButton({
   return { visible, label, icon: busy ? SpinnerIcon : icon };
 }
 
+export interface RecapPills {
+  start(): void;
+  stop(): void;
+  refresh(): Promise<void>;
+  /** Shows progress on an agent's pill while a manual recap request runs, then its result. */
+  track<T>(agentId: string, request: Promise<T>): Promise<T>;
+}
+
 /**
  * Keeps one composer pill per agent in sync with daemon recaps. Recaps finish after an idle delay
  * without any agent update, so the list is also polled, faster right after agent activity.
+ *
+ * A factory rather than a class: plugin client bundles reach Hermes (iOS, Android) without Metro's
+ * transforms, and Hermes rejects class syntax (getpaseo/paseo#5783).
  */
-export class RecapPills {
-  readonly #client: PluginClientContext;
-  readonly #pills = new Map<string, PluginButtonRegistration>();
-  readonly #lifetime = new AbortController();
-  #views = new Map<string, RecapView>();
-  #debounce: ReturnType<typeof setTimeout> | null = null;
-  #poll: ReturnType<typeof setInterval> | null = null;
-  #refreshing = false;
-  #lastRefreshAt = 0;
-  #activeUntil = 0;
-  readonly #popover = makeRecapPopover({
-    cachedView: (agentId) => this.#views.get(agentId),
-    track: (agentId, request) => this.track(agentId, request),
-  });
+export function createRecapPills(client: PluginClientContext): RecapPills {
+  const pills = new Map<string, PluginButtonRegistration>();
+  const lifetime = new AbortController();
+  let views = new Map<string, RecapView>();
+  let debounce: ReturnType<typeof setTimeout> | null = null;
+  let poll: ReturnType<typeof setInterval> | null = null;
+  let refreshing = false;
+  let lastRefreshAt = 0;
+  let activeUntil = 0;
 
-  constructor(client: PluginClientContext) {
-    this.#client = client;
-  }
+  const render = (): void => {
+    const now = Date.now();
+    for (const [agentId, pill] of pills) {
+      pill.update(pillButton(pillPresentation(views.get(agentId), now)));
+    }
+  };
 
-  start(): void {
-    this.#client.paseo.agents
-      .list({ subscribe: {}, signal: this.#lifetime.signal })
-      .then(({ subscription }) => {
-        subscription.subscribe({
-          snapshot: ({ entries }) => {
-            this.#removeAll();
-            for (const { agent } of entries) this.#register(agent);
-            this.#scheduleRefresh();
-          },
-          update: (message) => {
-            if (message.type !== "agent_update") return;
-            const update = message.payload;
-            if (update.kind === "remove") this.#remove(update.agentId);
-            else if (!this.#pills.has(update.agent.id)) this.#register(update.agent);
-            this.#activeUntil = Date.now() + ACTIVE_WINDOW_MS;
-            this.#scheduleRefresh();
-          },
-        });
-      })
-      .catch((error: unknown) => {
-        if (!this.#lifetime.signal.aborted) console.error("[paseo-recap] agent observation failed", error);
-      });
-    this.#poll = setInterval(() => {
-      const now = Date.now();
-      const pending = [...this.#views.values()].some(isPending);
-      if (pending || now < this.#activeUntil || now - this.#lastRefreshAt >= IDLE_POLL_MS) {
-        void this.refresh();
-      }
-    }, TICK_MS);
-  }
-
-  async refresh(): Promise<void> {
-    if (this.#refreshing || this.#lifetime.signal.aborted) return;
-    this.#refreshing = true;
-    this.#lastRefreshAt = Date.now();
+  const refresh = async (): Promise<void> => {
+    if (refreshing || lifetime.signal.aborted) return;
+    refreshing = true;
+    lastRefreshAt = Date.now();
     try {
-      const { recaps } = await this.#client.rpc(recapListRpc, {});
-      this.#views = new Map(recaps.map((view) => [view.agentId, view]));
-      this.#render();
+      const { recaps } = await client.rpc(recapListRpc, {});
+      views = new Map(recaps.map((view) => [view.agentId, view]));
+      render();
     } catch (error) {
       console.error("[paseo-recap] failed to load recaps", error);
     } finally {
-      this.#refreshing = false;
+      refreshing = false;
     }
-  }
+  };
 
-  /** Shows progress on an agent's pill while a manual recap request runs, then its result. */
-  async track<T>(agentId: string, request: Promise<T>): Promise<T> {
-    const view = this.#views.get(agentId) ?? { agentId, recap: null, previous: [], error: null, state: "idle" };
-    this.#views.set(agentId, { ...view, state: "generating", error: null });
-    this.#render();
+  const track = async <T,>(agentId: string, request: Promise<T>): Promise<T> => {
+    const view = views.get(agentId) ?? { agentId, recap: null, previous: [], error: null, state: "idle" };
+    views.set(agentId, { ...view, state: "generating", error: null });
+    render();
     try {
       return await request;
     } finally {
-      void this.refresh();
+      void refresh();
     }
-  }
+  };
 
-  stop(): void {
-    this.#lifetime.abort();
-    if (this.#debounce) clearTimeout(this.#debounce);
-    if (this.#poll) clearInterval(this.#poll);
-    this.#removeAll();
-  }
+  const popover = makeRecapPopover({ cachedView: (agentId) => views.get(agentId), track });
 
-  #register(agent: { id: string; workspaceId?: string | null }): void {
-    if (this.#lifetime.signal.aborted || !agent.workspaceId) return;
-    this.#pills.get(agent.id)?.remove();
-    const registration = this.#client.addComposerPill({
+  const register = (agent: { id: string; workspaceId?: string | null }): void => {
+    if (lifetime.signal.aborted || !agent.workspaceId) return;
+    pills.get(agent.id)?.remove();
+    const registration = client.addComposerPill({
       id: "recap",
       workspaceId: agent.workspaceId,
       agentId: agent.id,
       button: {
         title: "Session recap",
-        ...pillButton(pillPresentation(this.#views.get(agent.id), Date.now())),
-        behavior: { kind: "popover", Content: this.#popover },
+        ...pillButton(pillPresentation(views.get(agent.id), Date.now())),
+        behavior: { kind: "popover", Content: popover },
       },
     });
-    this.#pills.set(agent.id, registration);
-  }
+    pills.set(agent.id, registration);
+  };
 
-  #render(): void {
-    const now = Date.now();
-    for (const [agentId, pill] of this.#pills) {
-      pill.update(pillButton(pillPresentation(this.#views.get(agentId), now)));
-    }
-  }
+  const remove = (agentId: string): void => {
+    pills.get(agentId)?.remove();
+    pills.delete(agentId);
+  };
 
-  #scheduleRefresh(): void {
-    if (this.#debounce) clearTimeout(this.#debounce);
-    this.#debounce = setTimeout(() => {
-      this.#debounce = null;
-      void this.refresh();
+  const removeAll = (): void => {
+    for (const pill of pills.values()) pill.remove();
+    pills.clear();
+  };
+
+  const scheduleRefresh = (): void => {
+    if (debounce) clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      debounce = null;
+      void refresh();
     }, UPDATE_DEBOUNCE_MS);
-  }
+  };
 
-  #remove(agentId: string): void {
-    this.#pills.get(agentId)?.remove();
-    this.#pills.delete(agentId);
-  }
+  const start = (): void => {
+    client.paseo.agents
+      .list({ subscribe: {}, signal: lifetime.signal })
+      .then(({ subscription }) => {
+        subscription.subscribe({
+          snapshot: ({ entries }) => {
+            removeAll();
+            for (const { agent } of entries) register(agent);
+            scheduleRefresh();
+          },
+          update: (message) => {
+            if (message.type !== "agent_update") return;
+            const update = message.payload;
+            if (update.kind === "remove") remove(update.agentId);
+            else if (!pills.has(update.agent.id)) register(update.agent);
+            activeUntil = Date.now() + ACTIVE_WINDOW_MS;
+            scheduleRefresh();
+          },
+        });
+      })
+      .catch((error: unknown) => {
+        if (!lifetime.signal.aborted) console.error("[paseo-recap] agent observation failed", error);
+      });
+    poll = setInterval(() => {
+      const now = Date.now();
+      const pending = [...views.values()].some(isPending);
+      if (pending || now < activeUntil || now - lastRefreshAt >= IDLE_POLL_MS) void refresh();
+    }, TICK_MS);
+  };
 
-  #removeAll(): void {
-    for (const pill of this.#pills.values()) pill.remove();
-    this.#pills.clear();
-  }
+  const stop = (): void => {
+    lifetime.abort();
+    if (debounce) clearTimeout(debounce);
+    if (poll) clearInterval(poll);
+    removeAll();
+  };
+
+  return { start, stop, refresh, track };
 }

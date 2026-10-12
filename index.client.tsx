@@ -1,11 +1,11 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { RecapLine } from "./client/recap-line";
-import { RecapPills } from "./client/pills";
+import { createRecapPills } from "./client/pills";
 import { RecapSettingsScreen } from "./client/settings-screen";
 import { RECAP_TIMELINE_KIND, RecapTimelineDataSchema, recapRegenerateRpc } from "./shared/recap";
 
 export default function contribute(client: PluginClientContext) {
-  const pills = new RecapPills(client);
+  const pills = createRecapPills(client);
   pills.start();
 
   const removeTimelineRenderer = client.addTimelineRenderer({
