@@ -1,11 +1,27 @@
 import { defineRpc, defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
 
-export const RECAP_SUMMARY_MAX_CHARS = 700;
-export const RECAP_NEXT_ACTION_MAX_CHARS = 200;
+// Providers ------------------------------------------------------------------------------------
 
 /**
- * `auto`: the agent's own provider (cheap model) first, then Paseo's metadata-generation order.
+ * CLIs that can write recaps, each with the small, fast model it uses by default. OpenCode model
+ * ids depend on the user's own providers, so it uses its configured default.
+ */
+export const RECAP_PROVIDERS = {
+  claude: { label: "Claude", defaultModel: "haiku" },
+  codex: { label: "Codex", defaultModel: "gpt-6-luna" },
+  opencode: { label: "OpenCode", defaultModel: null },
+} as const satisfies Record<string, { label: string; defaultModel: string | null }>;
+export type RecapProvider = keyof typeof RECAP_PROVIDERS;
+
+export function isRecapProvider(value: string): value is RecapProvider {
+  return Object.keys(RECAP_PROVIDERS).includes(value);
+}
+
+// Settings -------------------------------------------------------------------------------------
+
+/**
+ * `auto`: the agent's own provider first, then Paseo's metadata-generation order.
  * `metadata`: Paseo's metadata-generation order only.
  */
 export const GeneratorModeSchema = z.enum(["auto", "metadata"]);
@@ -20,6 +36,51 @@ export const GeneratorChoiceSchema = z.object({
 });
 export type GeneratorChoice = z.output<typeof GeneratorChoiceSchema>;
 
+const GeneratorSchema = z.union([GeneratorModeSchema, GeneratorChoiceSchema]);
+
+/** Inclusive ranges for numeric settings, shared by the schema and the settings screen. */
+export const SETTING_RANGES = {
+  idleDelaySeconds: { min: 0, max: 3600 },
+  minTurns: { min: 1, max: 50 },
+  turnsBetweenRecaps: { min: 1, max: 50 },
+  historyExchanges: { min: 1, max: 100 },
+} as const;
+
+function rangedInt(key: keyof typeof SETTING_RANGES, fallback: number) {
+  const { min, max } = SETTING_RANGES[key];
+  return z.number().int().min(min).max(max).default(fallback);
+}
+
+export const recapSettings = defineSettings({
+  id: "recap",
+  scope: "host",
+  version: 1,
+  schema: z.object({
+    autoRecap: z.boolean().default(true),
+    /** Quiet time after a turn ends before generating; a reply within it skips the recap. */
+    idleDelaySeconds: rangedInt("idleDelaySeconds", 10),
+    /** User messages required before the first recap of a session. */
+    minTurns: rangedInt("minTurns", 3),
+    /** Completed turns between automatic recaps; 1 recaps after every turn. */
+    turnsBetweenRecaps: rangedInt("turnsBetweenRecaps", 1),
+    /** Recent exchanges (a user message and the reply) a recap reads, within an ~8K-token budget. */
+    historyExchanges: rangedInt("historyExchanges", 8),
+    generator: GeneratorSchema.default("auto"),
+    includeSubagents: z.boolean().default(false),
+    /** Hold a parent's recap while its subagents run (at most 10 minutes), as Claude Code does. */
+    waitForSubagents: z.boolean().default(false),
+  }),
+});
+export type RecapSettings = z.output<typeof recapSettings.schema>;
+
+// Recaps ---------------------------------------------------------------------------------------
+
+export const RECAP_SUMMARY_MAX_CHARS = 700;
+export const RECAP_NEXT_ACTION_MAX_CHARS = 200;
+
+const ModelRefSchema = z.object({ provider: z.string(), model: z.string().nullable() });
+export type ModelRef = z.output<typeof ModelRefSchema>;
+
 export const StoredRecapSchema = z.object({
   agentId: z.string(),
   summary: z.string(),
@@ -29,7 +90,7 @@ export const StoredRecapSchema = z.object({
   turnCount: z.number().int().nonnegative(),
   stale: z.boolean(),
   trigger: z.enum(["auto", "manual"]),
-  generator: z.object({ provider: z.string(), model: z.string().nullable() }),
+  generator: ModelRefSchema,
   /** Agent context captured at generation time. */
   agent: z
     .object({
@@ -62,6 +123,17 @@ export const RecapViewSchema = z.object({
 });
 export type RecapView = z.output<typeof RecapViewSchema>;
 
+/** The models a generator setting resolves to, for the settings screen. */
+export const ModelPlanSchema = z.object({
+  /** "Same as agent": the model each provider's agents try first. */
+  perProvider: z.array(ModelRefSchema),
+  /** Tried in order: for other agents, after a first choice fails, or for every other setting. */
+  fallback: z.array(ModelRefSchema),
+});
+export type ModelPlan = z.output<typeof ModelPlanSchema>;
+
+// RPCs -----------------------------------------------------------------------------------------
+
 export const recapGetRpc = defineRpc({
   name: "recap.get",
   input: z.object({ agentId: z.string().min(1) }),
@@ -80,53 +152,8 @@ export const recapRegenerateRpc = defineRpc({
   output: RecapViewSchema,
 });
 
-/** Inclusive ranges for numeric settings, shared by the schema and the settings screen. */
-export const SETTING_RANGES = {
-  idleDelaySeconds: { min: 0, max: 3600 },
-  minTurns: { min: 1, max: 50 },
-  turnsBetweenRecaps: { min: 1, max: 50 },
-  historyExchanges: { min: 1, max: 100 },
-} as const;
-type NumericSetting = keyof typeof SETTING_RANGES;
-
-function rangedInt(key: NumericSetting, fallback: number) {
-  const { min, max } = SETTING_RANGES[key];
-  return z.number().int().min(min).max(max).default(fallback);
-}
-
-const ModelRefSchema = z.object({ provider: z.string(), model: z.string().nullable() });
-export const ModelPlanSchema = z.object({
-  /** "Same as agent": the model each provider's agents try first. */
-  perProvider: z.array(ModelRefSchema),
-  /** Tried in order: for other agents, after a first choice fails, or for every other setting. */
-  fallback: z.array(ModelRefSchema),
-});
-export type ModelPlan = z.output<typeof ModelPlanSchema>;
-
-export const recapSettings = defineSettings({
-  id: "recap",
-  scope: "host",
-  version: 1,
-  schema: z.object({
-    autoRecap: z.boolean().default(true),
-    /** Quiet time after a turn ends before generating; a reply within it skips the recap. */
-    idleDelaySeconds: rangedInt("idleDelaySeconds", 10),
-    /** User messages required before the first recap of a session. */
-    minTurns: rangedInt("minTurns", 3),
-    /** Completed turns between automatic recaps; 1 recaps after every turn. */
-    turnsBetweenRecaps: rangedInt("turnsBetweenRecaps", 1),
-    /** Recent exchanges (a user message and the reply) a recap reads, within an ~8K-token budget. */
-    historyExchanges: rangedInt("historyExchanges", 8),
-    generator: z.union([GeneratorModeSchema, GeneratorChoiceSchema]).default("auto"),
-    includeSubagents: z.boolean().default(false),
-    /** Hold a parent's recap while its subagents run (at most 10 minutes), as Claude Code does. */
-    waitForSubagents: z.boolean().default(false),
-  }),
-});
-export type RecapSettings = z.output<typeof recapSettings.schema>;
-
 export const recapModelPlanRpc = defineRpc({
   name: "recap.models",
-  input: z.object({ generator: z.union([GeneratorModeSchema, GeneratorChoiceSchema]) }),
+  input: z.object({ generator: GeneratorSchema }),
   output: ModelPlanSchema,
 });

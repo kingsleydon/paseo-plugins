@@ -3,7 +3,7 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { recapGetRpc, recapRegenerateRpc, type RecapView, type StoredRecap } from "../shared/recap";
+import { recapGetRpc, recapRegenerateRpc, type StoredRecap } from "../shared/recap";
 import { relativeTime } from "./format";
 
 const GENERATING_POLL_MS = 2_000;
@@ -82,10 +82,13 @@ export function RecapBody({
   );
 }
 
-export function makeRecapPopover(onChanged: () => void) {
+/** Lets the card report a manual recap request, so the pill can show its progress. */
+export type TrackRecap = <T>(agentId: string, request: Promise<T>) => Promise<T>;
+
+export function makeRecapPopover(track: TrackRecap) {
   return function RecapPopover(props: PluginButtonContentProps) {
     if (props.context !== "agent") return null;
-    return <RecapCard {...props} agentId={props.agentId} onChanged={onChanged} />;
+    return <RecapCard {...props} agentId={props.agentId} track={track} />;
   };
 }
 
@@ -93,8 +96,8 @@ function RecapCard({
   theme,
   layout,
   agentId,
-  onChanged,
-}: PluginButtonContentProps & { agentId: string; onChanged: () => void }) {
+  track,
+}: PluginButtonContentProps & { agentId: string; track: TrackRecap }) {
   const getRecap = useRpc(recapGetRpc);
   const regenerateRecap = useRpc(recapRegenerateRpc);
   const queryClient = useQueryClient();
@@ -107,18 +110,11 @@ function RecapCard({
       current.state.data?.state === "generating" ? GENERATING_POLL_MS : false,
   });
   const regenerate = useMutation({
-    mutationFn: () => regenerateRecap({ agentId }),
-    onMutate: () => {
-      // Show progress immediately; the RPC resolves only after generation finishes.
-      queryClient.setQueryData<RecapView>(recapQueryKey(agentId), (previous) =>
-        previous ? { ...previous, state: "generating", error: null } : previous,
-      );
-      setTimeout(onChanged, 500);
-    },
+    // The RPC resolves only after generation finishes; `regenerate.isPending` shows progress here.
+    mutationFn: () => track(agentId, regenerateRecap({ agentId })),
     onSettled: (view) => {
       if (view) queryClient.setQueryData(recapQueryKey(agentId), view);
       else void query.refetch();
-      onChanged();
     },
   });
 

@@ -1,7 +1,8 @@
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import type { PluginHookAgent, PluginTurnOutcome } from "@getpaseo/plugin/server";
 import type { RecapSettings, RecapState, RecapView, StoredRecap } from "../shared/recap";
-import { NoGeneratorError, RecapSkippedError, type GeneratedRecap } from "./generators";
+import { NoGeneratorError, RecapSkippedError } from "./errors";
+import type { GeneratedRecap } from "./generators";
 import { buildRecapInput, countUserTurns, isCompacting, latestActiveTask, trimForRecap } from "./history";
 import { historyBudget, renderPrompt } from "./prompt";
 

@@ -13,11 +13,11 @@ const TICK_MS = 2_000;
 const IDLE_POLL_MS = 30_000;
 /** After agent activity, poll every tick: a recap lands a few seconds after the idle delay. */
 const ACTIVE_WINDOW_MS = 30_000;
+const UPDATE_DEBOUNCE_MS = 1_000;
 
-/** Paseo's own loading spinner (an ActivityIndicator), scaled to the pill's icon size. */
-function SpinnerIcon({ size, color }: PluginButtonIconProps) {
-  const style = { width: size, height: size, transform: [{ scale: size / 20 }] };
-  return <ActivityIndicator size="small" color={color} style={style} />;
+/** The spinner Paseo itself shows while loading (a small ActivityIndicator). */
+function SpinnerIcon({ color }: PluginButtonIconProps) {
+  return <ActivityIndicator size="small" color={color} />;
 }
 
 function pillButton({
@@ -28,7 +28,6 @@ function pillButton({
 }: PillPresentation): Pick<PluginButton, "visible" | "label" | "icon"> {
   return { visible, label, icon: busy ? SpinnerIcon : icon };
 }
-const UPDATE_DEBOUNCE_MS = 1_000;
 
 /**
  * Keeps one composer pill per agent in sync with daemon recaps. Recaps finish after an idle delay
@@ -44,7 +43,7 @@ export class RecapPills {
   #refreshing = false;
   #lastRefreshAt = 0;
   #activeUntil = 0;
-  readonly #popover = makeRecapPopover(() => this.refresh());
+  readonly #popover = makeRecapPopover((agentId, request) => this.track(agentId, request));
 
   constructor(client: PluginClientContext) {
     this.#client = client;
@@ -94,6 +93,18 @@ export class RecapPills {
       console.error("[paseo-recap] failed to load recaps", error);
     } finally {
       this.#refreshing = false;
+    }
+  }
+
+  /** Shows progress on an agent's pill while a manual recap request runs, then its result. */
+  async track<T>(agentId: string, request: Promise<T>): Promise<T> {
+    const view = this.#views.get(agentId) ?? { agentId, recap: null, previous: [], error: null, state: "idle" };
+    this.#views.set(agentId, { ...view, state: "generating", error: null });
+    this.#render();
+    try {
+      return await request;
+    } finally {
+      void this.refresh();
     }
   }
 

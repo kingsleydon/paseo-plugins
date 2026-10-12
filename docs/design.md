@@ -325,7 +325,7 @@ Adapters (verified against claude 2.1.292, codex-cli 0.160.0, opencode 1.18.30 o
 | Provider | Invocation | Notes |
 |---|---|---|
 | `claude` | `claude -p --output-format json --json-schema <schema> --system-prompt <short> --tools "" --no-session-persistence --setting-sources "" --strict-mcp-config --settings '{"alwaysThinkingEnabled":false}' [--model haiku]` | Reads `structured_output`. No tools, hooks, plugins, CLAUDE.md, or saved session |
-| `codex` | `codex exec --ephemeral --skip-git-repo-check --sandbox read-only --output-schema <file> --output-last-message <file> --disable hooks --config notify=[] --config model_reasoning_effort="low" <isolation> [--model gpt-6-luna] -` | User config stays (auth, gateways); hooks and turn notifications off. `<isolation>` comes from `codex mcp list --json` and `codex features list` before each run: `--config mcp_servers.<name>.enabled=false` per server (overrides merge, so an empty table would not clear them), `--disable` for each tool feature the installed Codex knows (it rejects unknown flags), and `web_search="disabled"`. If either probe fails, or a server name cannot be quoted safely, Codex is skipped (fail closed). Verified on codex-cli 0.162.1: exec refused, Paseo MCP unreachable |
+| `codex` | `codex exec --ephemeral --skip-git-repo-check --sandbox read-only --output-schema <file> --output-last-message <file> --disable hooks --config notify=[] --config model_reasoning_effort="low" [--model gpt-6-luna] -` | User config stays (auth, gateways, MCP servers); hooks and turn notifications off |
 | `opencode` | `opencode run --pure --format json --agent plan --dir <tmp> [--model p/m]`, then `opencode session delete <id>` | Read-only agent; permission requests auto-rejected; the session it always persists is deleted |
 
 Measured: Claude Haiku ~3 s and ~$0.002 per recap; Codex GPT-6-Luna ~10 s; Codex default model ~15 s.
@@ -446,8 +446,8 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
   messages.
 - Only user and assistant text is sent; tool output (file contents, command output) is not.
 - Prompt injection: the conversation is framed as data, generators have no tools (Claude `--tools ""`,
-  Codex read-only sandbox with every MCP server and tool feature turned off, OpenCode `plan` agent
-  with permissions rejected), output is
+  Codex read-only sandbox with the user's own Codex configuration, OpenCode `plan` agent with
+  permissions rejected), output is
   schema-validated and rendered as plain text.
 - No secrets in plugin config; CLIs use their existing logins. Recaps are stored 0600 under the
   user's Paseo home, never in a workspace.
@@ -498,7 +498,7 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
 
 ## 7. Testing
 
-- Unit (vitest, 81 tests): history grouping, budgets, excerpting, trimming, todo/goal hints;
+- Unit (vitest, 79 tests): history grouping, budgets, excerpting, trimming, todo/goal hints;
   prompt rendering and output parsing; candidate ordering, CLI arguments, OpenCode event parsing and
   session cleanup, queueing, failure classification, process abort/timeout; usage guard; store
   persistence, history, pruning; scheduler state machine with fake timers for every row in §5.12

@@ -17,7 +17,10 @@ import {
   recapSettings,
   SETTING_RANGES,
   type GeneratorChoice,
+  isRecapProvider,
+  RECAP_PROVIDERS,
   type GeneratorMode,
+  type RecapProvider,
   type RecapSettings,
 } from "../shared/recap";
 import { describePlan } from "./format";
@@ -28,38 +31,35 @@ const SAVE_DELAY_MS = 600;
 type ReadySettings = Extract<SettingsState<typeof recapSettings.schema>, { status: "ready" }>;
 type Save = (patch: Partial<RecapSettings>) => void;
 
-const MODEL_SOURCE_OPTIONS = [
+type ModelSource = GeneratorMode | RecapProvider;
+
+const MODEL_SOURCE_OPTIONS: ReadonlyArray<{ label: string; value: ModelSource }> = [
   { label: "Same as agent", value: "auto" },
   { label: "Metadata model", value: "metadata" },
-  { label: "Claude", value: "claude" },
-  { label: "Codex", value: "codex" },
-  { label: "OpenCode", value: "opencode" },
-] as const;
-type ModelSource = (typeof MODEL_SOURCE_OPTIONS)[number]["value"];
+  ...Object.entries(RECAP_PROVIDERS).map(([value, { label }]) => ({ label, value: value as RecapProvider })),
+];
 
-/** Suggested when switching to a provider: its small, fast model, or the CLI default. */
-const SUGGESTED_MODELS: Record<string, string | undefined> = { claude: "haiku", codex: "gpt-6-luna" };
-
-const MODEL_SOURCE_HINTS: Record<ModelSource, string> = {
+const MODE_HINTS: Record<GeneratorMode, string> = {
   auto: "Recaps use the agent's own provider, so the conversation stays with the vendor you chose. If it is unavailable, the Metadata generation model is used.",
   metadata:
     "Recaps use the model from Settings → Metadata generation, the one Paseo uses for titles and commit messages.",
-  claude: "Recaps always use Claude.",
-  codex: "Recaps always use Codex.",
-  opencode: "Recaps always use OpenCode.",
 };
 const CLI_HINT = " Runs the provider's CLI on this computer with your existing login.";
 
-function modelSource(generator: RecapSettings["generator"]): ModelSource {
-  if (typeof generator === "string") return generator;
-  return MODEL_SOURCE_OPTIONS.some((option) => option.value === generator.provider)
-    ? (generator.provider as ModelSource)
-    : "auto";
+function modelSourceHint(source: ModelSource): string {
+  const hint = isRecapProvider(source) ? `Recaps always use ${RECAP_PROVIDERS[source].label}.` : MODE_HINTS[source];
+  return hint + CLI_HINT;
 }
 
+function modelSource(generator: RecapSettings["generator"]): ModelSource {
+  if (typeof generator === "string") return generator;
+  return isRecapProvider(generator.provider) ? generator.provider : "auto";
+}
+
+/** Switching to a provider starts from its small, fast recap model, or the CLI default. */
 function generatorFor(source: ModelSource): GeneratorMode | GeneratorChoice {
-  if (source === "auto" || source === "metadata") return source;
-  const model = SUGGESTED_MODELS[source];
+  if (!isRecapProvider(source)) return source;
+  const model = RECAP_PROVIDERS[source].defaultModel;
   return model ? { provider: source, model } : { provider: source };
 }
 
@@ -242,7 +242,7 @@ function RecapSettingsForm({ settings }: { settings: ReadySettings }) {
         <SettingsCard>
           <SettingsSelect
             label="Recap model"
-            hint={MODEL_SOURCE_HINTS[source] + CLI_HINT}
+            hint={modelSourceHint(source)}
             value={source}
             options={MODEL_SOURCE_OPTIONS}
             disabled={disabled}

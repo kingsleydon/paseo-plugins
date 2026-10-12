@@ -1,4 +1,4 @@
-import type { ModelPlan, RecapView } from "../shared/recap";
+import { isRecapProvider, RECAP_PROVIDERS, type ModelPlan, type ModelRef, type RecapView } from "../shared/recap";
 
 export function relativeTime(iso: string, now: number): string {
   const seconds = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
@@ -35,10 +35,12 @@ export function isPending(view: RecapView): boolean {
   return view.state === "waiting" || view.state === "generating";
 }
 
-const PROVIDER_NAMES: Record<string, string> = { claude: "Claude", codex: "Codex", opencode: "OpenCode" };
+function providerLabel(provider: string): string {
+  return isRecapProvider(provider) ? RECAP_PROVIDERS[provider].label : provider;
+}
 
-function modelName({ provider, model }: ModelPlan["fallback"][number]): string {
-  return `${PROVIDER_NAMES[provider] ?? provider} ${model ?? "default model"}`;
+function modelName({ provider, model }: ModelRef): string {
+  return `${providerLabel(provider)} ${model ?? "default model"}`;
 }
 
 /** Plain-language list of the models a setting resolves to, e.g. "Claude haiku, then Codex gpt-6-luna." */
@@ -48,7 +50,7 @@ export function describePlan(plan: ModelPlan): string {
     return order === "" ? "No supported model. Install and log in to claude, codex, or opencode." : `${order}.`;
   }
   const own = plan.perProvider
-    .map((ref) => `${PROVIDER_NAMES[ref.provider] ?? ref.provider} agents: ${modelName(ref)}.`)
+    .map((ref) => `${providerLabel(ref.provider)} agents: ${modelName(ref)}.`)
     .join(" ");
   return order === "" ? own : `${own} Other agents, or if that fails: ${order}.`;
 }

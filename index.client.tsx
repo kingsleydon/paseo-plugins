@@ -29,9 +29,7 @@ export default function contribute(client: PluginClientContext) {
     context: "agent",
     async onSubmit({ agent, rpc }) {
       // The pill shows progress; the RPC resolves once the recap is written.
-      setTimeout(() => void pills.refresh(), 500);
-      const view = await rpc(recapRegenerateRpc, { agentId: agent.id });
-      await pills.refresh();
+      const view = await pills.track(agent.id, rpc(recapRegenerateRpc, { agentId: agent.id }));
       if (view.error) throw new Error(view.error);
     },
   });
