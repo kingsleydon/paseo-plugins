@@ -1,4 +1,3 @@
-import type { PaseoApi } from "@getpaseo/client";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { mkdir } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -16,6 +15,7 @@ import {
 import { errorMessage, RecapSkippedError } from "./server/errors";
 import { RecapGenerator } from "./server/generators";
 import { describeModelPlan, resolveCandidates, type GeneratorConfig } from "./server/models";
+import type { PaseoApi } from "./server/paseo-types";
 import { runProcess } from "./server/process";
 import { RecapScheduler } from "./server/scheduler";
 import { RecapStore } from "./server/store";

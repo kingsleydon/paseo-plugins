@@ -1,10 +1,10 @@
-import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { RecapGenerator } from "../server/generators";
 import { resolveCandidates } from "../server/models";
+import type { AgentTimelineItem } from "../server/paseo-types";
 import { runProcess } from "../server/process";
 import { buildRecapInput, latestActiveTask } from "../server/history";
 import { historyBudget, renderPrompt } from "../server/prompt";

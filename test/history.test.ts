@@ -1,5 +1,5 @@
-import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { describe, expect, it } from "vitest";
+import type { AgentTimelineItem } from "../server/paseo-types";
 import {
   buildRecapInput,
   byteLength,

@@ -1,8 +1,8 @@
-import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import type { PluginHookAgent } from "@getpaseo/plugin/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recapSettings, type RecapSettings, type StoredRecap } from "../shared/recap";
 import type { GeneratedRecap } from "../server/generators";
+import type { AgentTimelineItem } from "../server/paseo-types";
 import { NoGeneratorError, RecapSkippedError } from "../server/errors";
 import {
   CHILD_BLOCK_MAX_MS,

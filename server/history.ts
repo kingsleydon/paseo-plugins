@@ -1,5 +1,5 @@
-import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { SETTING_RANGES } from "../shared/recap";
+import type { AgentTimelineItem } from "./paseo-types";
 
 /** Most exchanges a recap can read; the `historyExchanges` setting picks how many, up to this. */
 export const HISTORY_EXCHANGES_LIMIT = SETTING_RANGES.historyExchanges.max;
