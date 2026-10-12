@@ -181,7 +181,7 @@ function RecapSettingsForm({ settings }: { settings: ReadySettings }) {
         <SettingsCard>
           <SettingsSwitch
             label="Generate recaps automatically"
-            hint="Manual /recap always works."
+            hint="/paseo-recap and the pill always work."
             value={values.autoRecap}
             disabled={disabled}
             onValueChange={(autoRecap) => save({ autoRecap })}

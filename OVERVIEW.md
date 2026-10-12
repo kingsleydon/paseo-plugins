@@ -9,7 +9,7 @@ Recaps are written by a command line tool on the host running the Paseo daemon. 
 ## What you get
 
 - **Recap line.** About 40 words after a completed turn, with a **Next** step when one was agreed or asked.
-- **Recap pill.** A pill above the composer on every agent shows how old the latest recap is. Tap it to read the recap, generate one now, regenerate it, or see the previous four. The `/recap` command does the same.
+- **Recap pill.** A pill above the composer on every agent shows how old the latest recap is. Tap it to read the recap, generate one now, regenerate it, or see the previous four. The `/paseo-recap` command does the same. Claude agents keep their own `/recap` from Claude Code.
 - **Automatic timing.** The first recap comes after your third message, then one after each completed turn once the agent has been quiet for 10 seconds. Replying sooner skips that turn.
 
 Recaps are skipped for canceled or failed turns, while a permission request is pending, during context compaction, and for providers at 90% or more of their usage limit. Agents started by other agents are not recapped automatically, but you can generate one from their pill.
@@ -18,7 +18,7 @@ Recaps are skipped for canceled or failed turns, while a permission request is p
 
 Open **Settings → Plugins → paseo-recap → Recap**.
 
-- **Generate recaps automatically.** Turns automatic recaps on or off. The pill and `/recap` always work.
+- **Generate recaps automatically.** Turns automatic recaps on or off. The pill and `/paseo-recap` always work.
 - **Every N turns**, **Wait after a turn**, and **Start after** control when automatic recaps run.
 - **Recent exchanges to read.** How many of your messages and the replies a recap reads, from 1 to 100. The default is 8.
 - **Recap subagents** and **Wait for subagents.** Recap agents started by other agents, and hold a parent's recap while its subagents run, for up to 10 minutes.

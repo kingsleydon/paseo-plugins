@@ -14,7 +14,8 @@ OpenCode, OMP, Pi, and custom agents.
 - **Recap in the conversation.** A muted line after the turn it summarizes, with a **Next:** step,
   like Claude Code's session recap. Display-only: it never enters the agent's context.
 - **Recap pill on every agent.** Shows the latest recap's age; tap it to read, regenerate, or see
-  earlier recaps, or to generate one for an agent that has none yet. `/recap` does the same.
+  earlier recaps, or to generate one for an agent that has none yet. `/paseo-recap` does the same
+  (Claude agents keep Claude Code's own `/recap`).
 - **Any model.** By default each agent is recapped by its own provider (Claude by Claude Haiku,
   Codex by GPT-6-Luna). Choose Paseo's metadata model or any Claude, Codex, or OpenCode model
   instead; the settings screen shows exactly which models will run.
@@ -44,7 +45,7 @@ you type.
 
 | Setting | Default | Description |
 |---|---|---|
-| Generate recaps automatically | On | `/recap` and the pill always work, even when off |
+| Generate recaps automatically | On | `/paseo-recap` and the pill always work, even when off |
 | Every N turns | 1 | Completed turns between recaps (1–50) |
 | Wait after a turn (seconds) | 10 | Quiet time before a recap; replying sooner skips that turn (0–3600) |
 | Start after (messages) | 3 | Your messages before an agent's first recap, as in Claude Code (1–50) |
@@ -100,7 +101,7 @@ paseo plugin logs paseo-recap
 | Path | Contents |
 |---|---|
 | `index.server.ts` | Daemon entry: lifecycle hooks, RPCs, timeline rows |
-| `index.client.tsx` | App entry: recap line, pill, settings screen, `/recap` |
+| `index.client.tsx` | App entry: recap line, pill, settings screen, `/paseo-recap` |
 | `server/scheduler.ts` | Per-agent state machine: when to recap |
 | `server/history.ts`, `server/prompt.ts` | What a recap reads and the prompt |
 | `server/models.ts`, `server/generators.ts`, `server/cli.ts`, `server/process.ts` | Which model runs, queue and fallback, per-CLI arguments, process runner |

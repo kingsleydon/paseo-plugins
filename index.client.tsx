@@ -23,7 +23,9 @@ export default function contribute(client: PluginClientContext) {
   });
 
   const removeCommand = client.addSlashCommand({
-    name: "recap",
+    // Not "recap": plugin commands take precedence over provider commands, and Claude Code agents
+    // already offer their own /recap.
+    name: "paseo-recap",
     description: "Summarize where this agent stands",
     argumentHint: "",
     context: "agent",

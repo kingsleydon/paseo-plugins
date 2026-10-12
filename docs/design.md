@@ -29,7 +29,7 @@ opens the latest recap and its history. It never enters the agent's model contex
 
 - Replacing context compaction summaries (those serve the model, not the user).
 - Long-form session reports, PR descriptions, or changelogs.
-- Recapping imported/historical sessions automatically (manual `/recap` only).
+- Recapping imported/historical sessions automatically (manual `/paseo-recap` only).
 - A full recap block above the composer: plugins only get a one-line pill there (max 160 px), and
   Paseo replaced stacked cards with that track bar on purpose (see §8).
 - A cross-agent recap list: removed to match Claude Code; each agent's recap lives in its own
@@ -181,7 +181,7 @@ Missing (drives design choices and upstream asks in §8):
 - Plugin timeline rows live in the daemon's memory only. → lines disappear after a daemon restart;
   the stored recap and the pill remain.
 - No access to provider-native recap events (OMP `recap_update`).
-- `agent.turn_ended` fires only for live turns, not imports/resumes. → manual `/recap` fetches the
+- `agent.turn_ended` fires only for live turns, not imports/resumes. → manual `/paseo-recap` fetches the
   timeline itself.
 
 ## 5. Design
@@ -195,7 +195,7 @@ daemon (plugin subprocess)                                    app (every client)
 │  turn_started / turn_ended / permission_*    │              │ composer pill per agent      │
 │  archived ─► RecapScheduler                  │     RPC      │  "Recap · 3m" → popover card │
 │  new recap ─► timeline.append (plugin row)   │ ◄──────────► │                              │
-│ RecapScheduler (per-agent state machine)     │ recap.get    │ /recap slash command         │
+│ RecapScheduler (per-agent state machine)     │ recap.get    │ /paseo-recap slash command   │
 │  ├► history.ts  timeline → bounded excerpt   │ recap.list   │ settings screen              │
 │  ├► prompt.ts   rules + JSON schema          │ recap.regen… └──────────────────────────────┘
 │  ├► UsageGuard  skip providers near limits   │
@@ -411,7 +411,9 @@ Popover card: summary, `Next: …`, age · model · manual marker, "Out of date"
 show as one line (e.g. no model available, agent running). Model output is rendered as selectable
 plain text only.
 
-`/recap`: manual recap for the current agent; errors become Paseo's toast.
+`/paseo-recap`: manual recap for the current agent; errors become Paseo's toast. Not `/recap`:
+Paseo resolves plugin commands before provider commands, so `/recap` would hide Claude Code's own
+`/recap`, which Claude agents expose in Paseo.
 
 Settings screen (Settings → Plugins → paseo-recap → Recap; host scope, shared by all clients):
 
@@ -472,7 +474,7 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
 | Huge single message | — | Head + tail excerpt | — | Head + tail excerpt, UTF-8 safe |
 | Subagents | — | — | — | Not recapped by default |
 | Turns without a new user message | Counts user messages | Counts completed turns | — | Counts completed turns |
-| Imported / resumed session | — | — | `latestRecap` on reconnect | Manual `/recap` fetches the timeline |
+| Imported / resumed session | — | — | `latestRecap` on reconnect | Manual `/paseo-recap` fetches the timeline |
 | Missed turn-ended event | — | — | — | Manual recap trusts live daemon status |
 | Agent deleted without archive | — | — | — | Pruned after 30 days |
 | Daemon / plugin restart | — | — | Recap journal persists | Recaps persist; in-flight lost; next completed turn recaps |
@@ -524,7 +526,7 @@ Open a Discussion (feature requests are not accepted as issues) for:
 
 ## 9. Milestones
 
-1. M0 — Scheduler, history builder, Claude/Codex adapters, store, composer pill + popover, `/recap`. ✅
+1. M0 — Scheduler, history builder, Claude/Codex adapters, store, composer pill + popover, `/paseo-recap`. ✅
 2. M1 — Settings screen, OpenCode adapter, agent-first provider order, usage guard, edge cases. ✅
 3. M2 — Recap history; recap line in the conversation (replaced the Recaps surface). ✅
 4. M3 — Verify in a running Paseo; upstream Discussion; publish to paseo-cafe.
