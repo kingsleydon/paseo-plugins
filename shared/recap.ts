@@ -94,6 +94,15 @@ function rangedInt(key: NumericSetting, fallback: number) {
   return z.number().int().min(min).max(max).default(fallback);
 }
 
+const ModelRefSchema = z.object({ provider: z.string(), model: z.string().nullable() });
+export const ModelPlanSchema = z.object({
+  /** "Same as agent": the model each provider's agents try first. */
+  perProvider: z.array(ModelRefSchema),
+  /** Tried in order: for other agents, after a first choice fails, or for every other setting. */
+  fallback: z.array(ModelRefSchema),
+});
+export type ModelPlan = z.output<typeof ModelPlanSchema>;
+
 export const recapSettings = defineSettings({
   id: "recap",
   scope: "host",
@@ -115,3 +124,9 @@ export const recapSettings = defineSettings({
   }),
 });
 export type RecapSettings = z.output<typeof recapSettings.schema>;
+
+export const recapModelPlanRpc = defineRpc({
+  name: "recap.models",
+  input: z.object({ generator: z.union([GeneratorModeSchema, GeneratorChoiceSchema]) }),
+  output: ModelPlanSchema,
+});

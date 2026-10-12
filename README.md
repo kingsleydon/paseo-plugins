@@ -34,7 +34,8 @@ and other agent products.
 **Settings → Plugins → paseo-recap → Recap**: automatic recaps on/off, every N turns (1–50), wait
 after a turn (0–3600 s), first recap after N messages (1–50), recent exchanges to read (1–100),
 recapping and waiting for subagents, and the model (same as the agent, Paseo's metadata model, or any
-Claude, Codex, or OpenCode model id). Numbers and model ids are typed in and checked as you type.
+Claude, Codex, or OpenCode model id; OpenCode reaches most other vendors). **Will use** shows the exact
+models that setting resolves to. Numbers and model ids are typed in and checked as you type.
 
 ### Model
 

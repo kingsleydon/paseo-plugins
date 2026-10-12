@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pillPresentation, relativeTime } from "../client/format";
+import { describePlan, pillPresentation, relativeTime } from "../client/format";
 import type { RecapView } from "../shared/recap";
 import { makeRecap } from "./fixtures";
 
@@ -30,5 +30,26 @@ describe("pillPresentation", () => {
       icon: "History",
       busy: false,
     });
+  });
+});
+
+describe("describePlan", () => {
+  it("names the exact models in plain words", () => {
+    expect(
+      describePlan({
+        perProvider: [
+          { provider: "claude", model: "haiku" },
+          { provider: "opencode", model: null },
+        ],
+        fallback: [
+          { provider: "claude", model: "haiku" },
+          { provider: "codex", model: "gpt-6-luna" },
+        ],
+      }),
+    ).toBe(
+      "Claude agents: Claude haiku. OpenCode agents: OpenCode default model. Other agents, or if that fails: Claude haiku, then Codex gpt-6-luna.",
+    );
+    expect(describePlan({ perProvider: [], fallback: [{ provider: "claude", model: "sonnet" }] })).toBe("Claude sonnet.");
+    expect(describePlan({ perProvider: [], fallback: [] })).toMatch(/No supported model/);
   });
 });

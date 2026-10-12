@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { GeneratorChoice, GeneratorMode } from "../shared/recap";
+import type { GeneratorChoice, GeneratorMode, ModelPlan } from "../shared/recap";
 import { parseRecapOutput, RECAP_JSON_SCHEMA, RECAP_SYSTEM_PROMPT, type ParsedRecap } from "./prompt";
 
 export const GENERATE_TIMEOUT_MS = 60_000;
@@ -131,6 +131,20 @@ export function resolveCandidates(
     });
   }
   return candidates;
+}
+
+/** Which models a setting resolves to, for the settings screen. Availability is checked at run time. */
+export function describeModelPlan(choice: GeneratorMode | GeneratorChoice, config: GeneratorConfig): ModelPlan {
+  const summarize = (candidates: readonly GeneratorCandidate[]) =>
+    candidates.map(({ provider, model }) => ({ provider, model }));
+  const fallback = summarize(resolveCandidates(choice === "auto" ? "metadata" : choice, config));
+  if (choice !== "auto") return { perProvider: [], fallback };
+  const perProvider = SUPPORTED_PROVIDERS.flatMap((provider) =>
+    summarize(resolveCandidates("auto", config, provider).slice(0, 1)).filter(
+      (candidate) => candidate.provider === provider,
+    ),
+  );
+  return { perProvider, fallback };
 }
 
 export interface GeneratorDeps {

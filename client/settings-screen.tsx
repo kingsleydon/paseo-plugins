@@ -1,4 +1,4 @@
-import { useSettings, type PluginSurfaceProps, type SettingsState } from "@getpaseo/plugin/client";
+import { useRpc, useSettings, type PluginSurfaceProps, type SettingsState } from "@getpaseo/plugin/client";
 import {
   SettingsAction,
   SettingsCard,
@@ -8,16 +8,19 @@ import {
   SettingsSelect,
   SettingsSwitch,
 } from "@getpaseo/plugin/client/ui";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Text } from "react-native";
 import {
   MODEL_ID_PATTERN,
+  recapModelPlanRpc,
   recapSettings,
   SETTING_RANGES,
   type GeneratorChoice,
   type GeneratorMode,
   type RecapSettings,
 } from "../shared/recap";
+import { describePlan } from "./format";
 
 /** Typing pauses this long before a valid value is saved, so each keystroke is not a save. */
 const SAVE_DELAY_MS = 600;
@@ -166,6 +169,11 @@ function RecapSettingsForm({ settings }: { settings: ReadySettings }) {
   const autoInputDisabled = !values.autoRecap;
   const source = modelSource(values.generator);
   const model = typeof values.generator === "string" ? "" : (values.generator.model ?? "");
+  const getModelPlan = useRpc(recapModelPlanRpc);
+  const plan = useQuery({
+    queryKey: ["paseo-recap", "models", values.generator],
+    queryFn: () => getModelPlan({ generator: values.generator }),
+  });
 
   return (
     <>
@@ -263,6 +271,16 @@ function RecapSettingsForm({ settings }: { settings: ReadySettings }) {
               }}
             />
           )}
+          <SettingsRow
+            label="Will use"
+            hint={
+              plan.data
+                ? describePlan(plan.data)
+                : plan.isError
+                  ? "Could not read Paseo's model settings."
+                  : "Checking…"
+            }
+          />
         </SettingsCard>
       </SettingsSection>
       {settings.saveError ? (

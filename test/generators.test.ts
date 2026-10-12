@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   claudeArgs,
   codexArgs,
+  describeModelPlan,
   GeneratorUnavailableError,
   MAX_CONCURRENT_GENERATIONS,
   NoGeneratorError,
@@ -39,6 +40,25 @@ describe("resolveCandidates", () => {
       ["claude", "haiku", ["/opt/claude", "--flag"]],
     ]);
     expect(summarize(resolveCandidates("auto", {}, "opencode"))[0]).toEqual(["opencode", null, ["opencode"]]);
+  });
+
+  it("describes the models each setting resolves to", () => {
+    expect(describeModelPlan("auto", config)).toEqual({
+      perProvider: [
+        { provider: "claude", model: "haiku" },
+        { provider: "codex", model: "gpt-6-luna" },
+        { provider: "opencode", model: null },
+      ],
+      fallback: [
+        { provider: "codex", model: "gpt-5.5" },
+        { provider: "claude", model: "haiku" },
+        { provider: "codex", model: "gpt-6-luna" },
+      ],
+    });
+    expect(describeModelPlan({ provider: "claude", model: "sonnet" }, config)).toEqual({
+      perProvider: [],
+      fallback: [{ provider: "claude", model: "sonnet" }],
+    });
   });
 
   it("falls back to metadata order for unsupported agent providers", () => {

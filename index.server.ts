@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   recapGetRpc,
   recapListRpc,
+  recapModelPlanRpc,
   recapRegenerateRpc,
   RECAP_TIMELINE_KIND,
   recapSettings,
@@ -13,6 +14,7 @@ import {
   type RecapTimelineData,
 } from "./shared/recap";
 import {
+  describeModelPlan,
   errorMessage,
   RecapGenerator,
   RecapSkippedError,
@@ -144,6 +146,14 @@ export default function contribute(server: PluginServerContext) {
     paseo = context.paseo;
     await ready;
     return { recaps: scheduler.list() };
+  });
+  server.handle(recapModelPlanRpc, async ({ generator }, context) => {
+    paseo = context.paseo;
+    const { config } = await context.paseo.config.get();
+    return describeModelPlan(generator, {
+      metadataGeneration: config.metadataGeneration,
+      providers: config.providers,
+    });
   });
   server.handle(recapRegenerateRpc, async ({ agentId }, context) => {
     paseo = context.paseo;

@@ -385,6 +385,7 @@ deleted without archiving. A corrupt file is logged and replaced with an empty s
 | `recap.get` | `{ agentId }` | `RecapView`: `{ agentId, state, recap, previous, error }` |
 | `recap.list` | `{}` | `{ recaps: RecapView[] }` for agents with a recap or activity |
 | `recap.regenerate` | `{ agentId }` | `RecapView` after generation; concurrent calls share one run |
+| `recap.models` | `{ generator }` | `ModelPlan`: per-provider first choice (`auto`) and the fallback order, resolved from daemon config |
 
 `state` is `idle | waiting | generating | error`. Clients poll `recap.list` every 2 s while any recap
 is waiting or generating and for 30 s after any agent update, otherwise every 30 s.
@@ -423,7 +424,7 @@ Settings screen (Settings → Plugins → paseo-recap → Recap; host scope, sha
 | `historyExchanges` | `8` (1–100) | number field |
 | `includeSubagents` | `false` | switch |
 | `waitForSubagents` | `false` | switch |
-| `generator` | `auto` | Same as agent, Metadata model, Claude, Codex, OpenCode; for a provider, a model id field (empty = CLI default). The hint explains the selected option |
+| `generator` | `auto` | Same as agent, Metadata model, Claude, Codex, OpenCode; for a provider, a model id field (empty = CLI default). The hint explains the selected option, and a **Will use** row names the exact models from the daemon config (e.g. "Claude agents: Claude haiku. … Other agents, or if that fails: Claude haiku, then Codex gpt-6-luna.") |
 
 Number and model fields validate as you type, show the error inline, and save 600 ms after the last
 valid keystroke. Model ids must match `^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$` (≤ 200 chars) because they
@@ -496,7 +497,7 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
 
 ## 7. Testing
 
-- Unit (vitest, 77 tests): history grouping, budgets, excerpting, trimming, todo/goal hints;
+- Unit (vitest, 79 tests): history grouping, budgets, excerpting, trimming, todo/goal hints;
   prompt rendering and output parsing; candidate ordering, CLI arguments, OpenCode event parsing and
   session cleanup, queueing, failure classification, process abort/timeout; usage guard; store
   persistence, history, pruning; scheduler state machine with fake timers for every row in §5.12
