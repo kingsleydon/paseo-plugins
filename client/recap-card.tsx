@@ -158,7 +158,7 @@ function RecapCard({
       ]}
     >
       {generating ? (
-        <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
+        <ActivityIndicator size={recap ? 12 : "small"} color={theme.colors.foregroundMuted} />
       ) : recap ? (
         <Icon name="RefreshCw" size={12} color={theme.colors.foregroundMuted} />
       ) : null}

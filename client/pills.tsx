@@ -15,9 +15,9 @@ const IDLE_POLL_MS = 30_000;
 const ACTIVE_WINDOW_MS = 30_000;
 const UPDATE_DEBOUNCE_MS = 1_000;
 
-/** The spinner Paseo itself shows while loading (a small ActivityIndicator). */
-function SpinnerIcon({ color }: PluginButtonIconProps) {
-  return <ActivityIndicator size="small" color={color} />;
+/** Sized to the icon slot, as Paseo's own pills draw their loading spinner. */
+function SpinnerIcon({ size, color }: PluginButtonIconProps) {
+  return <ActivityIndicator size={size} color={color} />;
 }
 
 function pillButton({
