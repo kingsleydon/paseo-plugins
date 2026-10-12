@@ -65,8 +65,9 @@ you type.
 ## How it works
 
 1. When a turn completes and the agent stays quiet for the wait time, the daemon-side plugin takes
-   the recent user and assistant text — never tool output, file contents, or reasoning — and asks a
-   local CLI for a structured `{ summary, next_action }` recap.
+   the recent user and assistant text and short error messages (up to 300 characters each), never
+   tool output, file contents, or reasoning, and asks a local CLI for a structured
+   `{ summary, next_action }` recap.
 2. The recap is stored under `$PASEO_HOME/plugin-data/paseo-recap/` and appended to the
    conversation as a plugin row. A new turn cancels a pending recap and marks the last one out of
    date.

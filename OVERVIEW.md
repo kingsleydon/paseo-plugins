@@ -26,7 +26,7 @@ Open **Settings → Plugins → paseo-recap → Recap**.
 
 ## Data and permissions
 
-A recap reads only the text of recent user and assistant messages, plus the agent's title and its current to-do item. It never reads tool output, file contents, or reasoning. That text goes to one model at a time, through its command line tool.
+A recap reads only the text of recent user and assistant messages, short error messages from those turns (the first 300 characters of each), the agent's title, and its current to-do item. It never reads tool output, file contents, or reasoning. That text goes to one model at a time, through its command line tool.
 
 With **Same as agent** or **Metadata model**, a model that is unavailable or fails is followed by the next one: the agent's own provider first (for Same as agent, when it has a small model), then the models in Paseo's metadata generation settings, then Paseo's small models that are installed (Claude Haiku, GPT-5.4 mini, MiniMax M3, Nemotron 3 Super). Any of those providers can therefore receive the conversation text. Unlike Paseo's own metadata generation, a recap never falls back to the agent's large model. Choosing Claude, Codex, or OpenCode sends recaps only to that provider, with no fallback.
 
