@@ -12,13 +12,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Text } from "react-native";
 import {
+  isRecapProvider,
   MODEL_ID_PATTERN,
+  RECAP_PROVIDERS,
   recapModelPlanRpc,
   recapSettings,
   SETTING_RANGES,
   type GeneratorChoice,
-  isRecapProvider,
-  RECAP_PROVIDERS,
   type GeneratorMode,
   type RecapProvider,
   type RecapSettings,

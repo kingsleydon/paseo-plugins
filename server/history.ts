@@ -22,26 +22,13 @@ export interface Exchange {
   errors: string[];
 }
 
-export interface RecapInput {
-  /** Labeled, budgeted conversation text. Empty when there is nothing to recap. */
-  history: string;
-  /** Number of user messages in the whole timeline. */
-  userTurns: number;
-  /** First unfinished item of the latest todo list, if any. */
-  activeTask: string | null;
-}
-
-export function buildRecapInput(
+/** Labeled, budgeted text of the last `maxExchanges` exchanges; empty when there is nothing to recap. */
+export function buildRecapHistory(
   timeline: readonly AgentTimelineItem[],
   maxHistoryBytes: number,
   maxExchanges: number,
-): RecapInput {
-  const exchanges = collectExchanges(timeline);
-  return {
-    history: formatHistory(exchanges.slice(-maxExchanges), maxHistoryBytes),
-    userTurns: countUserTurns(timeline),
-    activeTask: latestActiveTask(timeline),
-  };
+): string {
+  return formatHistory(collectExchanges(timeline).slice(-maxExchanges), maxHistoryBytes);
 }
 
 /**

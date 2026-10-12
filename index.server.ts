@@ -2,16 +2,6 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { mkdir } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  recapGetRpc,
-  recapListRpc,
-  recapModelPlanRpc,
-  recapRegenerateRpc,
-  RECAP_TIMELINE_KIND,
-  recapSettings,
-  type RecapSettings,
-  type RecapTimelineData,
-} from "./shared/recap";
 import { errorMessage, RecapSkippedError } from "./server/errors";
 import { RecapGenerator } from "./server/generators";
 import { describeModelPlan, resolveCandidates, type GeneratorInputs } from "./server/models";
@@ -20,6 +10,16 @@ import { runProcess } from "./server/process";
 import { RecapScheduler } from "./server/scheduler";
 import { RecapStore } from "./server/store";
 import { UsageGuard } from "./server/usage";
+import {
+  RECAP_TIMELINE_KIND,
+  recapGetRpc,
+  recapListRpc,
+  recapModelPlanRpc,
+  recapRegenerateRpc,
+  recapSettings,
+  type RecapSettings,
+  type RecapTimelineData,
+} from "./shared/recap";
 
 const TIMELINE_FETCH_LIMIT = 500;
 

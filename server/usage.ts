@@ -1,5 +1,7 @@
+import { errorMessage } from "./errors";
+
 /** Automatic recaps skip a provider once any of its usage windows passes this share. */
-export const USAGE_SKIP_PERCENT = 90;
+const USAGE_SKIP_PERCENT = 90;
 const USAGE_CACHE_MS = 5 * 60_000;
 
 /** Minimal shape of Paseo's provider usage report (`paseo.providers.listUsage()`). */
@@ -48,7 +50,7 @@ export class UsageGuard {
     this.#pending ??= this.#fetch()
       .then((providers) => providersNearLimit(providers))
       .catch((error: unknown) => {
-        this.#log("could not read provider usage", error instanceof Error ? error.message : error);
+        this.#log("could not read provider usage", errorMessage(error));
         return new Set<string>();
       })
       .then((near) => {

@@ -6,7 +6,7 @@ import type { GeneratorCandidate } from "./models";
 import { sanitizeEnv, type RunProcess } from "./process";
 import { RECAP_JSON_SCHEMA, type ParsedRecap } from "./prompt";
 
-export const GENERATE_TIMEOUT_MS = 60_000;
+const GENERATE_TIMEOUT_MS = 60_000;
 /** Many agents can finish at once; recaps queue instead of spawning a CLI per agent. */
 export const MAX_CONCURRENT_GENERATIONS = 2;
 const UNAVAILABLE_COOLDOWN_MS = 10 * 60_000;

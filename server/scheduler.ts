@@ -1,12 +1,12 @@
 import type { PluginHookAgent, PluginTurnOutcome } from "@getpaseo/plugin/server";
 import type { RecapSettings, RecapState, RecapView, StoredRecap } from "../shared/recap";
-import { NoGeneratorError, RecapSkippedError } from "./errors";
+import { errorMessage, NoGeneratorError, RecapSkippedError } from "./errors";
 import type { GeneratedRecap } from "./generators";
+import { buildRecapHistory, countUserTurns, isCompacting, latestActiveTask, trimForRecap } from "./history";
 import type { AgentTimelineItem } from "./paseo-types";
-import { buildRecapInput, countUserTurns, isCompacting, latestActiveTask, trimForRecap } from "./history";
 import { historyBudget, renderPrompt } from "./prompt";
 
-export const MAX_CONSECUTIVE_FAILURES = 3;
+const MAX_CONSECUTIVE_FAILURES = 3;
 export const RETRY_DELAY_MS = 30_000;
 /**
  * A child agent blocks its parent's recap (its work is still landing) only this long; a child
@@ -16,7 +16,7 @@ export const CHILD_BLOCK_MAX_MS = 10 * 60_000;
 
 const GENERIC_FAILURE = "Could not generate a recap.";
 const NO_GENERATOR =
-  "No recap model is available. Log in to the claude or codex CLI, or pick a model in the plugin settings.";
+  "No recap model is available. Log in to the claude, codex, or opencode CLI, or pick a model in the plugin settings.";
 
 export interface AgentContext {
   timeline: readonly AgentTimelineItem[];
@@ -184,7 +184,7 @@ export class RecapScheduler {
     } catch (error) {
       entry.state = "error";
       entry.error = "Could not read the conversation.";
-      this.#deps.log(`could not fetch timeline for agent ${agentId}`, errorText(error));
+      this.#deps.log(`could not fetch timeline for agent ${agentId}`, errorMessage(error));
       return this.view(agentId);
     }
     entry.timeline = trimForRecap(context.timeline);
@@ -307,8 +307,8 @@ export class RecapScheduler {
     if (abort.signal.aborted || entry.revision !== revision || this.#disposed) return;
     const timeline = entry.timeline ?? [];
     const context = { goal: entry.title, activeTask: latestActiveTask(timeline) };
-    const input = buildRecapInput(timeline, historyBudget(context), historyExchanges);
-    if (input.history === "") {
+    const history = buildRecapHistory(timeline, historyBudget(context), historyExchanges);
+    if (history === "") {
       entry.state = "idle";
       entry.error = trigger === "manual" ? "There is no conversation to recap yet." : null;
       return;
@@ -316,7 +316,7 @@ export class RecapScheduler {
     entry.state = "generating";
     entry.error = null;
     try {
-      const generated = await this.#deps.generate(renderPrompt(input.history, context), abort.signal, {
+      const generated = await this.#deps.generate(renderPrompt(history, context), abort.signal, {
         agentProvider: entry.provider,
         trigger,
       });
@@ -339,7 +339,7 @@ export class RecapScheduler {
       entry.turnsSinceRecap = 0;
       entry.state = "idle";
       await this.#deps.publish(recap).catch((error: unknown) => {
-        this.#deps.log(`could not show recap for agent ${entry.id}`, errorText(error));
+        this.#deps.log(`could not show recap for agent ${entry.id}`, errorMessage(error));
       });
     } catch (error) {
       if (abort.signal.aborted || entry.revision !== revision) return;
@@ -359,7 +359,7 @@ export class RecapScheduler {
       entry.failures++;
       entry.state = "error";
       entry.error = GENERIC_FAILURE;
-      this.#deps.log(`recap failed for agent ${entry.id}`, errorText(error));
+      this.#deps.log(`recap failed for agent ${entry.id}`, errorMessage(error));
       // Release the in-flight slot first; eligibility rejects agents with work in flight.
       if (entry.inFlight?.abort === abort) entry.inFlight = null;
       if (trigger === "auto" && entry.failures < MAX_CONSECUTIVE_FAILURES) {
@@ -427,8 +427,4 @@ export class RecapScheduler {
     }
     return entry;
   }
-}
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

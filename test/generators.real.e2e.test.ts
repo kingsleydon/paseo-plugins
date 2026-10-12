@@ -1,12 +1,12 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { RecapGenerator } from "../server/generators";
+import { buildRecapHistory, latestActiveTask } from "../server/history";
 import { resolveCandidates } from "../server/models";
 import type { AgentTimelineItem } from "../server/paseo-types";
 import { runProcess } from "../server/process";
-import { buildRecapInput, latestActiveTask } from "../server/history";
 import { historyBudget, renderPrompt } from "../server/prompt";
 import { recapSettings } from "../shared/recap";
 
@@ -30,12 +30,14 @@ const timeline: AgentTimelineItem[] = [
 ];
 
 describe.skipIf(!enabled)("real recap generation", () => {
+  const tempRoot = join(tmpdir(), "paseo-recap-e2e");
+  afterAll(() => rm(tempRoot, { recursive: true, force: true }));
+
   for (const choice of [
     { provider: "claude", model: "haiku" },
     { provider: "codex", model: "gpt-6-luna" },
   ]) {
     it(`generates a valid recap with ${choice.provider}`, async () => {
-      const tempRoot = join(tmpdir(), "paseo-recap-e2e");
       await mkdir(tempRoot, { recursive: true });
       const generator = new RecapGenerator({
         runProcess,
@@ -46,10 +48,10 @@ describe.skipIf(!enabled)("real recap generation", () => {
       });
       const context = { goal: "paseo-recap plugin", activeTask: latestActiveTask(timeline) };
       const { historyExchanges } = recapSettings.schema.parse({});
-      const input = buildRecapInput(timeline, historyBudget(context), historyExchanges);
+      const history = buildRecapHistory(timeline, historyBudget(context), historyExchanges);
       const started = Date.now();
       const recap = await generator.generate(
-        renderPrompt(input.history, context),
+        renderPrompt(history, context),
         resolveCandidates(choice, { config: {}, providers: [] }),
         new AbortController().signal,
       );

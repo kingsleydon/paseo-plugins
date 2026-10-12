@@ -2,6 +2,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
 import { StoredRecapSchema, type StoredRecap } from "../shared/recap";
+import { errorMessage } from "./errors";
+import { parseJson } from "./json";
 
 /** Earlier recaps kept per agent besides the latest (OMP journals every recap; we keep a few). */
 export const PREVIOUS_RECAPS_KEPT = 4;
@@ -39,7 +41,7 @@ export class RecapStore {
       if (isErrno(error, "ENOENT")) return;
       throw error;
     }
-    const parsed = StoreFileSchema.safeParse(safeJson(text));
+    const parsed = StoreFileSchema.safeParse(parseJson(text));
     if (!parsed.success) {
       this.#log("recap store is unreadable; starting empty", this.#path);
       return;
@@ -99,16 +101,8 @@ export class RecapStore {
     };
     this.#writeChain = this.#writeChain.then(write, write);
     return this.#writeChain.catch((error: unknown) => {
-      this.#log("failed to persist recaps", error instanceof Error ? error.message : error);
+      this.#log("failed to persist recaps", errorMessage(error));
     });
-  }
-}
-
-function safeJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
   }
 }
 

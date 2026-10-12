@@ -9,7 +9,7 @@ import { relativeTime } from "./format";
 
 const GENERATING_POLL_MS = 2_000;
 
-export function recapQueryKey(agentId: string) {
+function recapQueryKey(agentId: string) {
   return ["paseo-recap", "recap", agentId] as const;
 }
 
@@ -38,7 +38,6 @@ function useRecapStyles(theme: Theme) {
       row: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
       button: { ...button, backgroundColor: theme.colors.surface2 },
       ghostButton: { ...button, minHeight: 28, gap: 6, backgroundColor: "transparent" },
-      metaRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
       metaText: { flex: 1, color: theme.colors.foregroundMuted, fontSize: 12 },
       // Ghost buttons have no background; outdent them so their labels line up with the card edge.
       actions: { flexDirection: "row" as const, alignItems: "center" as const, marginRight: -button.paddingHorizontal },
@@ -51,13 +50,13 @@ function useRecapStyles(theme: Theme) {
   }, [theme]);
 }
 
-export function recapAge(recap: StoredRecap, now: number): string {
+function recapAge(recap: StoredRecap, now: number): string {
   const age = relativeTime(recap.generatedAt, now);
   return age === "now" ? "Just now" : `${age} ago`;
 }
 
 /** Summary, next action, and metadata of one recap. Plain text only: model output is untrusted. */
-export function RecapBody({
+function RecapBody({
   theme,
   recap,
   muted = false,
@@ -81,7 +80,7 @@ export function RecapBody({
           {recap.nextAction}
         </Text>
       ) : null}
-      <View style={styles.metaRow}>
+      <View style={styles.row}>
         <Text style={styles.metaText}>
           {recap.stale && !muted ? "Out of date · " : ""}
           {recapAge(recap, Date.now())}

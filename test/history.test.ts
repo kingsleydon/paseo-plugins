@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { AgentTimelineItem } from "../server/paseo-types";
 import {
-  buildRecapInput,
+  buildRecapHistory,
   byteLength,
   collectExchanges,
+  countUserTurns,
   excerptBytes,
   formatHistory,
   HISTORY_EXCHANGES_LIMIT,
@@ -102,19 +103,19 @@ describe("excerptBytes", () => {
   });
 });
 
-describe("buildRecapInput", () => {
-  it("counts user turns across the whole timeline and keeps the requested number of exchanges", () => {
+describe("buildRecapHistory", () => {
+  it("keeps the requested number of exchanges while user turns count the whole timeline", () => {
     const timeline = Array.from({ length: 10 }, (_, index) => [
       user(`request ${index}`),
       assistant(`reply ${index}`),
     ]).flat();
-    const input = buildRecapInput(timeline, 10_000, 8);
-    expect(input.userTurns).toBe(10);
-    expect(input.history).not.toContain("request 1\n");
-    expect(input.history).toContain("request 2");
-    expect(input.history).toContain("reply 9");
-    expect(buildRecapInput(timeline, 10_000, 3).history).not.toContain("request 6");
-    expect(buildRecapInput(timeline, 10_000, 20).history).toContain("request 0");
+    const history = buildRecapHistory(timeline, 10_000, 8);
+    expect(countUserTurns(timeline)).toBe(10);
+    expect(history).not.toContain("request 1\n");
+    expect(history).toContain("request 2");
+    expect(history).toContain("reply 9");
+    expect(buildRecapHistory(timeline, 10_000, 3)).not.toContain("request 6");
+    expect(buildRecapHistory(timeline, 10_000, 20)).toContain("request 0");
   });
 });
 
@@ -133,7 +134,7 @@ describe("trimForRecap", () => {
     expect(trimmed[0]).toBe(todo);
     expect(trimmed.filter((item) => item.type === "user_message")).toHaveLength(HISTORY_EXCHANGES_LIMIT);
     expect(trimmed.some((item) => item.type === "reasoning")).toBe(false);
-    expect(buildRecapInput(trimmed, 10_000, 8).history).toBe(buildRecapInput(timeline, 10_000, 8).history);
+    expect(buildRecapHistory(trimmed, 10_000, 8)).toBe(buildRecapHistory(timeline, 10_000, 8));
     expect(latestActiveTask(trimmed)).toBe("ship");
   });
 
