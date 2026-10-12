@@ -15,7 +15,8 @@ export function recapQueryKey(agentId: string) {
 
 type Theme = PluginHostProps["theme"];
 
-// Sizes follow Paseo's own controls: 15 px content text, 14 px secondary text, 32 px small buttons.
+// Sizes follow Paseo's own controls: 15 px content text, 14 px secondary text, 32 px small and
+// 28 px extra-small buttons.
 function useRecapStyles(theme: Theme) {
   return useMemo(() => {
     const button = {
@@ -36,10 +37,10 @@ function useRecapStyles(theme: Theme) {
       error: { color: theme.colors.statusDanger, fontSize: 14, lineHeight: 20 },
       row: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
       button: { ...button, backgroundColor: theme.colors.surface2 },
-      ghostButton: { ...button, backgroundColor: "transparent" },
+      ghostButton: { ...button, minHeight: 28, gap: 6, backgroundColor: "transparent" },
       ghostRow: { marginLeft: -button.paddingHorizontal },
       buttonText: { color: theme.colors.foreground, fontSize: 14 },
-      ghostButtonText: { color: theme.colors.foregroundMuted, fontSize: 14 },
+      ghostButtonText: { color: theme.colors.foregroundMuted, fontSize: 12 },
       pressed: { opacity: 0.85 },
       disabled: { opacity: 0.5 },
       earlier: { gap: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: theme.colors.border },
@@ -161,7 +162,7 @@ function RecapCard({
           {generating ? (
             <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
           ) : recap ? (
-            <Icon name="RefreshCw" size={14} color={theme.colors.foregroundMuted} />
+            <Icon name="RefreshCw" size={12} color={theme.colors.foregroundMuted} />
           ) : null}
           <Text style={recap ? styles.ghostButtonText : styles.buttonText}>
             {generating ? "Generating…" : recap ? "Regenerate" : "Generate"}
