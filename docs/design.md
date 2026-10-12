@@ -421,7 +421,7 @@ Settings screen (Settings → Plugins → paseo-recap → Recap; host scope, sha
 | `minTurns` | `3` | 1 / 2 / 3 / 5 messages |
 | `includeSubagents` | `false` | switch |
 | `waitForSubagents` | `false` | switch |
-| `generator` | `auto` | auto, metadata order, Claude Haiku, Codex GPT-6-Luna, Codex default, OpenCode default |
+| `generator` | `auto` | Auto, Paseo order, Claude Haiku, Codex GPT-6-Luna, Codex default, OpenCode default |
 
 Paseo's plugin API exposes no i18n, so UI strings are English; recap text follows the user's language.
 

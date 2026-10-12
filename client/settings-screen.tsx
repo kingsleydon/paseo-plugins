@@ -40,12 +40,12 @@ const MIN_TURNS_OPTIONS = [
 ] as const;
 
 const GENERATOR_OPTIONS = [
-  { label: "Agent's own provider, then Paseo order", value: "auto" },
-  { label: "Paseo metadata model order", value: "metadata" },
+  { label: "Auto", value: "auto" },
+  { label: "Paseo order", value: "metadata" },
   { label: "Claude Haiku", value: "claude:haiku" },
   { label: "Codex GPT-6-Luna", value: "codex:gpt-6-luna" },
-  { label: "Codex default model", value: "codex:" },
-  { label: "OpenCode default model", value: "opencode:" },
+  { label: "Codex default", value: "codex:" },
+  { label: "OpenCode default", value: "opencode:" },
 ] as const;
 
 function generatorValue(generator: RecapSettings["generator"]): string {
@@ -156,7 +156,7 @@ export function RecapSettingsScreen({ theme }: PluginSurfaceProps) {
         <SettingsCard>
           <SettingsSelect
             label="Recap model"
-            hint="Runs the provider's CLI with your existing login. The agent's own provider keeps the conversation with the vendor you already chose for it."
+            hint="Auto uses the agent's own provider first, then Paseo's metadata model order. Runs the provider's CLI with your existing login."
             value={generator}
             options={withCurrent(GENERATOR_OPTIONS, generator, generator)}
             disabled={disabled}
