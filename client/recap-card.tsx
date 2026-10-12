@@ -1,5 +1,6 @@
 import type { PluginButtonContentProps, PluginHostProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
+import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
@@ -36,6 +37,7 @@ function useRecapStyles(theme: Theme) {
       row: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
       button: { ...button, backgroundColor: theme.colors.surface2 },
       ghostButton: { ...button, backgroundColor: "transparent" },
+      ghostRow: { marginLeft: -button.paddingHorizontal },
       buttonText: { color: theme.colors.foreground, fontSize: 14 },
       ghostButtonText: { color: theme.colors.foregroundMuted, fontSize: 14 },
       pressed: { opacity: 0.85 },
@@ -141,17 +143,29 @@ function RecapCard({
         <Text style={styles.meta}>No recap yet. One appears after this agent's next turn, or generate it now.</Text>
       ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <View style={styles.row}>
+      {/* With a recap shown, regenerating is secondary: a ghost button, outdented so its label lines up
+          with the text above. Without one, Generate is the card's main action. */}
+      <View style={[styles.row, recap && styles.ghostRow]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={recap ? "Regenerate recap" : "Generate recap"}
           accessibilityState={{ disabled: generating, busy: generating }}
           disabled={generating}
           onPress={() => regenerate.mutate()}
-          style={({ pressed }) => [styles.button, pressed && styles.pressed, generating && styles.disabled]}
+          style={({ pressed }) => [
+            recap ? styles.ghostButton : styles.button,
+            pressed && styles.pressed,
+            generating && styles.disabled,
+          ]}
         >
-          {generating ? <ActivityIndicator size="small" color={theme.colors.foregroundMuted} /> : null}
-          <Text style={styles.buttonText}>{generating ? "Generating…" : recap ? "Regenerate" : "Generate"}</Text>
+          {generating ? (
+            <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
+          ) : recap ? (
+            <Icon name="RefreshCw" size={14} color={theme.colors.foregroundMuted} />
+          ) : null}
+          <Text style={recap ? styles.ghostButtonText : styles.buttonText}>
+            {generating ? "Generating…" : recap ? "Regenerate" : "Generate"}
+          </Text>
         </Pressable>
         {previous.length > 0 ? (
           <Pressable
