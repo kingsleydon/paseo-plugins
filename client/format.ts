@@ -13,15 +13,23 @@ export function relativeTime(iso: string, now: number): string {
 export interface PillPresentation {
   visible: boolean;
   label: string;
+  /** Lucide icon name; ignored while `busy`, when the pill shows a spinner instead. */
   icon: string;
+  busy: boolean;
 }
 
 export function pillPresentation(view: RecapView | undefined, now: number): PillPresentation {
-  if (view?.state === "generating") return { visible: true, label: "Recap…", icon: "LoaderCircle" };
-  if (!view?.recap) return { visible: false, label: "Recap", icon: "ScrollText" };
+  if (view?.state === "generating") return { visible: true, label: "Recap…", icon: "ScrollText", busy: true };
+  if (!view?.recap) return { visible: false, label: "Recap", icon: "ScrollText", busy: false };
   return {
     visible: true,
     label: `Recap · ${relativeTime(view.recap.generatedAt, now)}`,
     icon: view.recap.stale ? "History" : "ScrollText",
+    busy: false,
   };
+}
+
+/** A recap is on its way: worth polling closely so the pill never lingers on stale progress. */
+export function isPending(view: RecapView): boolean {
+  return view.state === "waiting" || view.state === "generating";
 }

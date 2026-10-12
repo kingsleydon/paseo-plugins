@@ -22,12 +22,13 @@ describe("pillPresentation", () => {
   });
 
   it("shows progress and age", () => {
-    expect(pillPresentation({ ...base, state: "generating" }, NOW).label).toBe("Recap…");
+    expect(pillPresentation({ ...base, state: "generating" }, NOW)).toMatchObject({ label: "Recap…", busy: true });
     const recap = makeRecap({ generatedAt: "2026-10-07T11:57:00.000Z", stale: true });
     expect(pillPresentation({ ...base, recap }, NOW)).toEqual({
       visible: true,
       label: "Recap · 3m",
       icon: "History",
+      busy: false,
     });
   });
 });

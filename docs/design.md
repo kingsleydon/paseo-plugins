@@ -385,8 +385,8 @@ deleted without archiving. A corrupt file is logged and replaced with an empty s
 | `recap.list` | `{}` | `{ recaps: RecapView[] }` for agents with a recap or activity |
 | `recap.regenerate` | `{ agentId }` | `RecapView` after generation; concurrent calls share one run |
 
-`state` is `idle | waiting | generating | error`. Clients poll `recap.list`: every 5 s for 90 s after
-any agent update (a recap lands a few seconds after the idle delay), otherwise every 30 s.
+`state` is `idle | waiting | generating | error`. Clients poll `recap.list` every 2 s while any recap
+is waiting or generating and for 30 s after any agent update, otherwise every 30 s.
 
 ### 5.9 UI
 
@@ -400,7 +400,7 @@ Composer pill, one per agent:
 | State | Label | Icon |
 |---|---|---|
 | No recap yet | hidden | — |
-| Generating | `Recap…` | `LoaderCircle` |
+| Generating | `Recap…` | Paseo's spinner (`ActivityIndicator`) |
 | Fresh | `Recap · 3m` | `ScrollText` |
 | Out of date (newer turn) | `Recap · 12m` | `History` |
 
