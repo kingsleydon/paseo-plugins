@@ -143,6 +143,13 @@ export function RecapSettingsScreen({ theme }: PluginSurfaceProps) {
             disabled={disabled || !values.autoRecap}
             onValueChange={(includeSubagents) => update({ includeSubagents })}
           />
+          <SettingsSwitch
+            label="Wait for subagents"
+            hint="Hold an agent's recap while its subagents run, up to 10 minutes."
+            value={values.waitForSubagents}
+            disabled={disabled || !values.autoRecap}
+            onValueChange={(waitForSubagents) => update({ waitForSubagents })}
+          />
         </SettingsCard>
       </SettingsSection>
       <SettingsSection title="Model">

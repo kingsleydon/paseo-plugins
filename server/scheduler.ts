@@ -259,7 +259,8 @@ export class RecapScheduler {
     if (this.#disposed || !settings.autoRecap) return false;
     if (entry.parentAgentId && !settings.includeSubagents) return false;
     if (entry.running || !entry.lastTurnCompleted || entry.inFlight) return false;
-    if (entry.pendingPermissions.size > 0 || this.#hasBlockingChild(entry)) return false;
+    if (entry.pendingPermissions.size > 0) return false;
+    if (settings.waitForSubagents && this.#hasBlockingChild(entry)) return false;
     if (entry.failures >= MAX_CONSECUTIVE_FAILURES || !entry.timeline) return false;
     if (isCompacting(entry.timeline)) return false;
     if (entry.userTurns < settings.minTurns) return false;

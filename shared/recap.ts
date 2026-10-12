@@ -88,9 +88,11 @@ export const recapSettings = defineSettings({
     /** User messages required before the first recap of a session. */
     minTurns: z.number().int().min(1).max(50).default(3),
     /** Completed turns between automatic recaps; 1 recaps after every turn. */
-    turnsBetweenRecaps: z.number().int().min(1).max(50).default(2),
+    turnsBetweenRecaps: z.number().int().min(1).max(50).default(1),
     generator: z.union([GeneratorModeSchema, GeneratorChoiceSchema]).default("auto"),
     includeSubagents: z.boolean().default(false),
+    /** Hold a parent's recap while its subagents run (at most 10 minutes), as Claude Code does. */
+    waitForSubagents: z.boolean().default(false),
   }),
 });
 export type RecapSettings = z.output<typeof recapSettings.schema>;

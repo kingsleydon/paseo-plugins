@@ -13,8 +13,8 @@ and other agent products.
 
 ## How it works
 
-- Like Claude Code, the first recap comes after 3 of your messages and then every 2 completed turns
-  (Claude Code waits ~3 min; this waits 10 seconds after the turn ends). It is under 40 words, built
+- Like Claude Code, the first recap comes after 3 of your messages; after that, one follows every
+  completed turn, 10 seconds after it ends (Claude Code waits ~3 min and recaps every 2 turns). It is under 40 words, built
   from the last 8 exchanges (user and assistant text only). If you reply within those 10 seconds,
   that turn is skipped. A new turn aborts any generation in flight and marks the recap as out of date.
 - Like Claude Code, the recap appears as a muted line in the conversation after the turn, with the
@@ -25,8 +25,8 @@ and other agent products.
   `$PASEO_HOME/plugin-data/paseo-recap/recaps.json` (latest + 4 previous per agent, pruned after
   30 days, removed when the agent is archived).
 - Skipped automatically: canceled or failed turns, pending permissions or questions, context
-  compaction, parents while a subagent runs (up to 10 min), subagents themselves, and providers whose
-  plan usage is ≥ 90%. See [docs/design.md §5.12](docs/design.md#512-edge-cases-compared) for how
+  compaction, subagents themselves, and providers whose plan usage is ≥ 90%. A parent is recapped
+  even while its subagents run, unless **Wait for subagents** is on (up to 10 min, as in Claude Code). See [docs/design.md §5.12](docs/design.md#512-edge-cases-compared) for how
   each case compares with Claude Code, Codex, and OMP.
 
 ### Settings

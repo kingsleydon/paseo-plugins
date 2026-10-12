@@ -234,20 +234,20 @@ Schedule an automatic recap only when all hold (defaults in parentheses):
 | Top-level agent, unless `includeSubagents` (`false`) | New — the parent's recap covers its children |
 | Last turn completed (not canceled/failed) | New |
 | ≥ `minTurns` user messages in the conversation (3) | Claude Code, Codex (both use 3) |
-| ≥ `turnsBetweenRecaps` completed turns since the last recap (2) | Claude Code, Codex (both use 2) |
+| ≥ `turnsBetweenRecaps` completed turns since the last recap (1 = every turn) | Claude Code, Codex (both use 2) |
 | No pending permission or question | New — Paseo's attention UI owns that moment |
-| No child agent running (for at most 10 min) | Claude Code (background work pending) |
+| If `waitForSubagents` (`false`): no child agent running (for at most 10 min) | Claude Code (background work pending) |
 | Not compacting context | OMP |
 | Nothing in flight; < 3 failures this turn | Claude Code, Codex |
 
 Rules are re-checked when the timer fires (settings, permissions, and children may have changed).
 
-Paseo has no presence signal, so "away" is approximated by idle time (OMP model). The progress gate
-matches Claude Code and Codex (3 messages first, then every 2 turns), but the wait is only 10 s
-instead of ~3 min, because Paseo's main use is glancing across many parallel agents from a phone and
-the recap sits in a pill instead of interrupting. The gate counts completed turns (not user
-messages), so turns resumed after a permission or background task also refresh the recap. Users can
-change the wait and frequency in settings.
+Paseo has no presence signal, so "away" is approximated by idle time (OMP model). The first recap
+waits for 3 messages, as in Claude Code and Codex. After that, defaults are more eager: every completed
+turn, 10 s after it ends, without waiting for subagents. Paseo's main use is glancing across many
+parallel agents from a phone, and the recap is a quiet line instead of an interruption. The gate
+counts completed turns (not user messages), so turns resumed after a permission or background task
+also refresh the recap. Frequency, wait, and waiting for subagents are settings.
 
 ### 5.4 History builder
 
@@ -416,18 +416,19 @@ Settings screen (Settings → Plugins → paseo-recap → Recap; host scope, sha
 | Key | Default | Control |
 |---|---|---|
 | `autoRecap` | `true` | switch |
-| `turnsBetweenRecaps` | `2` | every 1 / 2 / 3 / 5 turns |
+| `turnsBetweenRecaps` | `1` | every 1 / 2 / 3 / 5 turns |
 | `idleDelaySeconds` | `10` (0–3600) | immediately, 10 s, 30 s, 1–10 min |
 | `minTurns` | `3` | 1 / 2 / 3 / 5 messages |
 | `includeSubagents` | `false` | switch |
+| `waitForSubagents` | `false` | switch |
 | `generator` | `auto` | auto, metadata order, Claude Haiku, Codex GPT-6-Luna, Codex default, OpenCode default |
 
 Paseo's plugin API exposes no i18n, so UI strings are English; recap text follows the user's language.
 
 ### 5.10 Cost
 
-Defaults recap every second completed turn that stays quiet for 10 s. Input ≤ ~8 K tokens, output
-~60. With Claude Haiku that is ~$0.002 per recap (a few hundred turns a day ≈ $0.50). On subscription plans
+Defaults recap every completed turn that stays quiet for 10 s. Input ≤ ~8 K tokens, output ~60.
+With Claude Haiku that is ~$0.002 per recap (a few hundred turns a day ≈ $1). On subscription plans
 recaps draw on the plan's limits, hence the 90% usage guard. Claude Code avoids most of this cost by
 riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native call (§8) matters.
 
@@ -451,7 +452,7 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
 | User replies during the wait | Focus regained aborts | Turn change discards | Activity aborts | `turn_started` aborts timer and generation |
 | Result lands after a new turn started | Remote: dropped | Discarded | Re-check after reply | Discarded (revision check) |
 | Draft text in the composer | Skip | — | Skip | Not visible to daemon plugins; a reply aborts anyway |
-| Background agents/workflows running | Skip | — | — | Skip while a child runs, for at most 10 min |
+| Background agents/workflows running | Skip | — | — | Recap anyway; optional wait (`waitForSubagents`, ≤ 10 min) |
 | Context compaction in progress | — | — | Skip | Skip |
 | Pending permission or question | — | — | — | Skip; re-armed when cleared while idle |
 | Canceled or failed turn | — | — | — | No recap; existing one stays, marked out of date |
@@ -461,7 +462,7 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
 | Many agents finish at once | n/a (one session) | n/a | n/a | Max 2 concurrent CLIs, queue honors aborts |
 | Very long session | Cache-backed full context | Last 8 exchanges, 8 K tokens | Full context | Last 8 exchanges, 32 KiB; only that is kept in memory |
 | Huge single message | — | Head + tail excerpt | — | Head + tail excerpt, UTF-8 safe |
-| Subagents | — | — | — | Not recapped by default; parent waits for them |
+| Subagents | — | — | — | Not recapped by default |
 | Turns without a new user message | Counts user messages | Counts completed turns | — | Counts completed turns |
 | Imported / resumed session | — | — | `latestRecap` on reconnect | Manual `/recap` fetches the timeline |
 | Missed turn-ended event | — | — | — | Manual recap trusts live daemon status |
@@ -489,7 +490,7 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
 
 ## 7. Testing
 
-- Unit (vitest, 74 tests): history grouping, budgets, excerpting, trimming, todo/goal hints;
+- Unit (vitest, 75 tests): history grouping, budgets, excerpting, trimming, todo/goal hints;
   prompt rendering and output parsing; candidate ordering, CLI arguments, OpenCode event parsing and
   session cleanup, queueing, failure classification, process abort/timeout; usage guard; store
   persistence, history, pruning; scheduler state machine with fake timers for every row in §5.12

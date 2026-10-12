@@ -97,7 +97,7 @@ afterEach(() => {
 });
 
 describe("RecapScheduler", () => {
-  it("by default recaps after 3 messages, then every 2 completed turns, 10 seconds after each", async () => {
+  it("by default recaps after 3 messages, then every completed turn, 10 seconds after each", async () => {
     const { scheduler, generate } = setup({});
     await endTurn(scheduler, agent("a"), turns(2));
     await vi.advanceTimersByTimeAsync(10_000);
@@ -109,14 +109,18 @@ describe("RecapScheduler", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(generate).toHaveBeenCalledOnce();
 
-    await endTurn(scheduler, agent("a"), turns(4));
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(generate).toHaveBeenCalledOnce();
-
     // A turn without a new user message (e.g. resumed after a permission) still counts.
-    await endTurn(scheduler, agent("a"), turns(4));
+    await endTurn(scheduler, agent("a"), turns(3));
     await vi.advanceTimersByTimeAsync(10_000);
     expect(generate).toHaveBeenCalledTimes(2);
+  });
+
+  it("by default recaps a parent while its subagent is still running", async () => {
+    const { scheduler, generate } = setup({});
+    scheduler.turnStarted(agent("child", "p"));
+    await endTurn(scheduler, agent("p"), turns(3));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(generate).toHaveBeenCalledOnce();
   });
 
   it("generates immediately with a zero idle delay", async () => {
@@ -197,8 +201,8 @@ describe("RecapScheduler", () => {
     expect(scheduler.view("a").state).toBe("idle");
   });
 
-  it("skips canceled turns, pending permissions, and running subagents", async () => {
-    const { scheduler, generate } = setup();
+  it("skips canceled turns, pending permissions, and running subagents when waiting for them", async () => {
+    const { scheduler, generate } = setup({ ...GATED, waitForSubagents: true });
     scheduler.turnStarted(agent("a"));
     await scheduler.turnEnded(agent("a"), { kind: "canceled", reason: "user" }, turns(3));
     await vi.advanceTimersByTimeAsync(DELAY_MS);
@@ -372,7 +376,7 @@ describe("RecapScheduler", () => {
     expect(generate).not.toHaveBeenCalled();
   });
   it("stops blocking the parent when a child never reports its turn end", async () => {
-    const { scheduler, generate } = setup(EVERY_TURN);
+    const { scheduler, generate } = setup({ ...EVERY_TURN, waitForSubagents: true });
     scheduler.turnStarted(agent("child", "p"));
     await endTurn(scheduler, agent("p"), turns(1));
     await vi.advanceTimersByTimeAsync(60_000);
