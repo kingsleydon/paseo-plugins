@@ -51,6 +51,8 @@ class MemoryStore implements RecapStoreLike {
 
 /** Scenario settings: slower and gated, so each rule can be exercised on its own. */
 const GATED: Partial<RecapSettings> = { idleDelaySeconds: 120, minTurns: 3, turnsBetweenRecaps: 2 };
+/** Default wait, but no progress gate, for scenarios that only need one turn. */
+const EVERY_TURN: Partial<RecapSettings> = { minTurns: 1, turnsBetweenRecaps: 1 };
 
 function setup(overrides: Partial<RecapSettings> = GATED) {
   const store = new MemoryStore();
@@ -93,22 +95,30 @@ afterEach(() => {
 });
 
 describe("RecapScheduler", () => {
-  it("by default recaps every completed turn after 10 seconds", async () => {
+  it("by default recaps after 3 messages, then every 2 completed turns, 10 seconds after each", async () => {
     const { scheduler, generate } = setup({});
-    await endTurn(scheduler, agent("a"), turns(1));
+    await endTurn(scheduler, agent("a"), turns(2));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(generate).not.toHaveBeenCalled();
+
+    await endTurn(scheduler, agent("a"), turns(3));
     await vi.advanceTimersByTimeAsync(9_999);
     expect(generate).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(generate).toHaveBeenCalledOnce();
 
+    await endTurn(scheduler, agent("a"), turns(4));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(generate).toHaveBeenCalledOnce();
+
     // A turn without a new user message (e.g. resumed after a permission) still counts.
-    await endTurn(scheduler, agent("a"), turns(1));
+    await endTurn(scheduler, agent("a"), turns(4));
     await vi.advanceTimersByTimeAsync(10_000);
     expect(generate).toHaveBeenCalledTimes(2);
   });
 
   it("generates immediately with a zero idle delay", async () => {
-    const { scheduler, generate } = setup({ idleDelaySeconds: 0 });
+    const { scheduler, generate } = setup({ ...EVERY_TURN, idleDelaySeconds: 0 });
     await endTurn(scheduler, agent("a"), turns(1));
     await vi.advanceTimersByTimeAsync(0);
     expect(generate).toHaveBeenCalledOnce();
@@ -256,7 +266,7 @@ describe("RecapScheduler", () => {
     expect(scheduler.list()).toEqual([]);
   });
   it("passes the agent's provider to the generator and records agent context", async () => {
-    const { scheduler, generate, store } = setup({});
+    const { scheduler, generate, store } = setup(EVERY_TURN);
     await endTurn(scheduler, { ...agent("a"), provider: "codex" }, turns(1));
     await vi.advanceTimersByTimeAsync(10_000);
     expect(generate.mock.calls[0]?.[2]).toEqual({ agentProvider: "codex", trigger: "auto" });
@@ -264,7 +274,7 @@ describe("RecapScheduler", () => {
   });
 
   it("counts user turns over the full timeline while keeping only recent exchanges", async () => {
-    const { scheduler, generate, store } = setup({});
+    const { scheduler, generate, store } = setup(EVERY_TURN);
     await endTurn(scheduler, agent("a"), turns(30));
     await vi.advanceTimersByTimeAsync(10_000);
     expect(store.get("a")?.turnCount).toBe(30);
@@ -274,7 +284,7 @@ describe("RecapScheduler", () => {
   });
 
   it("skips while the provider is compacting context", async () => {
-    const { scheduler, generate } = setup({});
+    const { scheduler, generate } = setup(EVERY_TURN);
     const compacting: AgentTimelineItem[] = [...turns(2), { type: "compaction", status: "loading" }];
     await endTurn(scheduler, agent("a"), compacting);
     await vi.advanceTimersByTimeAsync(60_000);
@@ -282,7 +292,7 @@ describe("RecapScheduler", () => {
   });
 
   it("re-arms when a pending permission is cleared while idle", async () => {
-    const { scheduler, generate } = setup({});
+    const { scheduler, generate } = setup(EVERY_TURN);
     scheduler.turnStarted(agent("a"));
     scheduler.permissionRequested(agent("a"), "req");
     await scheduler.turnEnded(agent("a"), { kind: "completed" }, turns(1));
@@ -294,7 +304,7 @@ describe("RecapScheduler", () => {
   });
 
   it("cancels a pending recap when a permission request arrives during the wait", async () => {
-    const { scheduler, generate } = setup({});
+    const { scheduler, generate } = setup(EVERY_TURN);
     await endTurn(scheduler, agent("a"), turns(1));
     scheduler.permissionRequested(agent("a"), "req");
     await vi.advanceTimersByTimeAsync(60_000);
@@ -302,7 +312,7 @@ describe("RecapScheduler", () => {
   });
 
   it("respects settings changed during the wait", async () => {
-    const { scheduler, generate, settings } = setup({});
+    const { scheduler, generate, settings } = setup(EVERY_TURN);
     await endTurn(scheduler, agent("a"), turns(1));
     settings.autoRecap = false;
     await vi.advanceTimersByTimeAsync(10_000);
@@ -311,7 +321,7 @@ describe("RecapScheduler", () => {
   });
 
   it("shares one run between concurrent manual requests", async () => {
-    const { scheduler, generate, fetchAgentContext } = setup({});
+    const { scheduler, generate, fetchAgentContext } = setup(EVERY_TURN);
     const [first, second] = await Promise.all([scheduler.regenerate("x"), scheduler.regenerate("x")]);
     expect(fetchAgentContext).toHaveBeenCalledOnce();
     expect(generate).toHaveBeenCalledOnce();
@@ -320,7 +330,7 @@ describe("RecapScheduler", () => {
   });
 
   it("reports a timeline fetch failure on manual recaps", async () => {
-    const { scheduler, generate, fetchAgentContext } = setup({});
+    const { scheduler, generate, fetchAgentContext } = setup(EVERY_TURN);
     fetchAgentContext.mockRejectedValueOnce(new Error("offline"));
     const view = await scheduler.regenerate("x");
     expect(generate).not.toHaveBeenCalled();
@@ -328,7 +338,7 @@ describe("RecapScheduler", () => {
   });
 
   it("reports an empty conversation on manual recaps", async () => {
-    const { scheduler, generate, fetchAgentContext } = setup({});
+    const { scheduler, generate, fetchAgentContext } = setup(EVERY_TURN);
     fetchAgentContext.mockResolvedValueOnce({
       timeline: [],
       title: null,
@@ -342,14 +352,14 @@ describe("RecapScheduler", () => {
   });
 
   it("stops scheduling after dispose", async () => {
-    const { scheduler, generate } = setup({});
+    const { scheduler, generate } = setup(EVERY_TURN);
     await endTurn(scheduler, agent("a"), turns(1));
     scheduler.dispose();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(generate).not.toHaveBeenCalled();
   });
   it("stops blocking the parent when a child never reports its turn end", async () => {
-    const { scheduler, generate } = setup({});
+    const { scheduler, generate } = setup(EVERY_TURN);
     scheduler.turnStarted(agent("child", "p"));
     await endTurn(scheduler, agent("p"), turns(1));
     await vi.advanceTimersByTimeAsync(60_000);
@@ -361,7 +371,7 @@ describe("RecapScheduler", () => {
   });
 
   it("explains a missing recap model and does not retry", async () => {
-    const { scheduler, generate } = setup({});
+    const { scheduler, generate } = setup(EVERY_TURN);
     generate.mockRejectedValue(new NoGeneratorError());
     await endTurn(scheduler, agent("a"), turns(1));
     await vi.advanceTimersByTimeAsync(10_000 + RETRY_DELAY_MS * 3);
@@ -370,7 +380,7 @@ describe("RecapScheduler", () => {
   });
 
   it("treats usage-limit skips as silent, not as failures", async () => {
-    const { scheduler, generate } = setup({});
+    const { scheduler, generate } = setup(EVERY_TURN);
     generate.mockRejectedValueOnce(new RecapSkippedError("near limit"));
     await endTurn(scheduler, agent("a"), turns(1));
     await vi.advanceTimersByTimeAsync(10_000 + RETRY_DELAY_MS);
@@ -382,7 +392,7 @@ describe("RecapScheduler", () => {
   });
 
   it("clears pending permissions when a new turn starts", async () => {
-    const { scheduler, generate } = setup({});
+    const { scheduler, generate } = setup(EVERY_TURN);
     scheduler.permissionRequested(agent("a"), "abandoned");
     await endTurn(scheduler, agent("a"), turns(1));
     await vi.advanceTimersByTimeAsync(10_000);

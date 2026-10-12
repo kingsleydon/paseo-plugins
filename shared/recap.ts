@@ -78,9 +78,9 @@ export const recapSettings = defineSettings({
     /** Quiet time after a turn ends before generating; a reply within it skips the recap. */
     idleDelaySeconds: z.number().int().min(0).max(3600).default(10),
     /** User messages required before the first recap of a session. */
-    minTurns: z.number().int().min(1).max(50).default(1),
+    minTurns: z.number().int().min(1).max(50).default(3),
     /** Completed turns between automatic recaps; 1 recaps after every turn. */
-    turnsBetweenRecaps: z.number().int().min(1).max(50).default(1),
+    turnsBetweenRecaps: z.number().int().min(1).max(50).default(2),
     generator: z.union([GeneratorModeSchema, GeneratorChoiceSchema]).default("auto"),
     includeSubagents: z.boolean().default(false),
   }),

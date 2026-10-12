@@ -13,9 +13,10 @@ and other agent products.
 
 ## How it works
 
-- By default, the daemon generates a recap 10 seconds after every completed turn, from the last 8
-  exchanges (user and assistant text only). If you reply within those 10 seconds, that turn is
-  skipped. A new turn aborts any generation in flight and marks the recap as out of date.
+- Like Claude Code, the first recap comes after 3 of your messages and then every 2 completed turns
+  (Claude Code waits ~3 min; this waits 10 seconds after the turn ends). It is under 40 words, built
+  from the last 8 exchanges (user and assistant text only). If you reply within those 10 seconds,
+  that turn is skipped. A new turn aborts any generation in flight and marks the recap as out of date.
 - The recap appears as a **Recap** pill above the composer; tap it for the card with the next
   action, regenerate, and earlier recaps. **Recaps** in the sidebar (or "Show agent recaps" in the
   Command Center) lists every agent's latest recap. `/recap` creates one on demand.
