@@ -3,7 +3,7 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { recapGetRpc, recapRegenerateRpc, type StoredRecap } from "../shared/recap";
+import { recapGetRpc, recapRegenerateRpc, type RecapView, type StoredRecap } from "../shared/recap";
 import { relativeTime } from "./format";
 
 const GENERATING_POLL_MS = 2_000;
@@ -82,13 +82,18 @@ export function RecapBody({
   );
 }
 
-/** Lets the card report a manual recap request, so the pill can show its progress. */
-export type TrackRecap = <T>(agentId: string, request: Promise<T>) => Promise<T>;
+/** What the card needs from the pills that open it. */
+export interface RecapPopoverSource {
+  /** The pill's latest view of an agent's recap, so the card opens at its full size. */
+  cachedView(agentId: string): RecapView | undefined;
+  /** Reports a manual recap request, so the pill can show its progress. */
+  track<T>(agentId: string, request: Promise<T>): Promise<T>;
+}
 
-export function makeRecapPopover(track: TrackRecap) {
+export function makeRecapPopover(source: RecapPopoverSource) {
   return function RecapPopover(props: PluginButtonContentProps) {
     if (props.context !== "agent") return null;
-    return <RecapCard {...props} agentId={props.agentId} track={track} />;
+    return <RecapCard {...props} agentId={props.agentId} source={source} />;
   };
 }
 
@@ -96,8 +101,8 @@ function RecapCard({
   theme,
   layout,
   agentId,
-  track,
-}: PluginButtonContentProps & { agentId: string; track: TrackRecap }) {
+  source,
+}: PluginButtonContentProps & { agentId: string; source: RecapPopoverSource }) {
   const getRecap = useRpc(recapGetRpc);
   const regenerateRecap = useRpc(recapRegenerateRpc);
   const queryClient = useQueryClient();
@@ -106,12 +111,15 @@ function RecapCard({
   const query = useQuery({
     queryKey: recapQueryKey(agentId),
     queryFn: () => getRecap({ agentId }),
+    // Paseo sizes a popover to its first render; starting from the pill's data avoids opening at
+    // the size of a loading spinner and clipping the recap that arrives a moment later.
+    initialData: () => source.cachedView(agentId),
     refetchInterval: (current) =>
       current.state.data?.state === "generating" ? GENERATING_POLL_MS : false,
   });
   const regenerate = useMutation({
     // The RPC resolves only after generation finishes; `regenerate.isPending` shows progress here.
-    mutationFn: () => track(agentId, regenerateRecap({ agentId })),
+    mutationFn: () => source.track(agentId, regenerateRecap({ agentId })),
     onSettled: (view) => {
       if (view) queryClient.setQueryData(recapQueryKey(agentId), view);
       else void query.refetch();

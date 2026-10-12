@@ -43,7 +43,10 @@ export class RecapPills {
   #refreshing = false;
   #lastRefreshAt = 0;
   #activeUntil = 0;
-  readonly #popover = makeRecapPopover((agentId, request) => this.track(agentId, request));
+  readonly #popover = makeRecapPopover({
+    cachedView: (agentId) => this.#views.get(agentId),
+    track: (agentId, request) => this.track(agentId, request),
+  });
 
   constructor(client: PluginClientContext) {
     this.#client = client;
