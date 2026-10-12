@@ -18,8 +18,9 @@ and other agent products.
   from the last 8 exchanges by default (user and assistant text only). If you reply within those 10 seconds,
   that turn is skipped. A new turn aborts any generation in flight and marks the recap as out of date.
 - Like Claude Code, the recap appears as a muted line in the conversation after the turn, with the
-  next action below it. A **Recap** pill above the composer shows its age; tap it to regenerate or
-  see earlier recaps. `/recap` creates one on demand.
+  next action below it. A **Recap** pill above the composer, on every agent, shows its age; tap it to
+  generate or regenerate a recap and see earlier ones. Agents that were idle when the plugin was
+  installed get their first recap after their next turn, or right away from the pill. `/recap` creates one on demand.
 - Recaps never enter the agent's context. The conversation line is display-only and kept in the
   daemon's memory, so it disappears after a daemon restart. Recaps themselves are stored in
   `$PASEO_HOME/plugin-data/paseo-recap/recaps.json` (latest + 4 previous per agent, pruned after

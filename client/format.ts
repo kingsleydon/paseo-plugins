@@ -20,7 +20,8 @@ export interface PillPresentation {
 
 export function pillPresentation(view: RecapView | undefined, now: number): PillPresentation {
   if (view?.state === "generating") return { visible: true, label: "Recap…", icon: "ScrollText", busy: true };
-  if (!view?.recap) return { visible: false, label: "Recap", icon: "ScrollText", busy: false };
+  // Shown even before the first recap, so agents that predate the plugin can get one in a tap.
+  if (!view?.recap) return { visible: true, label: "Recap", icon: "ScrollText", busy: false };
   return {
     visible: true,
     label: `Recap · ${relativeTime(view.recap.generatedAt, now)}`,

@@ -16,9 +16,8 @@ describe("relativeTime", () => {
 });
 
 describe("pillPresentation", () => {
-  it("hides the pill until a recap exists", () => {
-    expect(pillPresentation(undefined, NOW).visible).toBe(false);
-    expect(pillPresentation(base, NOW).visible).toBe(false);
+  it("shows the pill before the first recap so one can be generated", () => {
+    expect(pillPresentation(undefined, NOW)).toMatchObject({ visible: true, label: "Recap", busy: false });
   });
 
   it("shows progress and age", () => {

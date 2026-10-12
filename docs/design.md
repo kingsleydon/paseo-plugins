@@ -401,7 +401,7 @@ Composer pill, one per agent:
 
 | State | Label | Icon |
 |---|---|---|
-| No recap yet | hidden | — |
+| No recap yet | `Recap` (card offers **Generate**, so agents that predate the plugin get one in a tap) | `ScrollText` |
 | Generating | `Recap…` | Paseo's spinner (`ActivityIndicator`) |
 | Fresh | `Recap · 3m` | `ScrollText` |
 | Out of date (newer turn) | `Recap · 12m` | `History` |

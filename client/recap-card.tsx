@@ -134,20 +134,20 @@ function RecapCard({
       {recap ? (
         <RecapBody theme={theme} recap={recap} />
       ) : !query.isPending && !generating ? (
-        <Text style={styles.meta}>No recap yet. Recaps appear after an agent finishes a turn.</Text>
+        <Text style={styles.meta}>No recap yet. One appears after this agent's next turn, or generate it now.</Text>
       ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <View style={styles.row}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Regenerate recap"
+          accessibilityLabel={recap ? "Regenerate recap" : "Generate recap"}
           accessibilityState={{ disabled: generating, busy: generating }}
           disabled={generating}
           onPress={() => regenerate.mutate()}
           style={({ pressed }) => [styles.button, pressed && styles.pressed, generating && styles.disabled]}
         >
           {generating ? <ActivityIndicator size="small" color={theme.colors.foregroundMuted} /> : null}
-          <Text style={styles.buttonText}>{generating ? "Generating…" : "Regenerate"}</Text>
+          <Text style={styles.buttonText}>{generating ? "Generating…" : recap ? "Regenerate" : "Generate"}</Text>
         </Pressable>
         {previous.length > 0 ? (
           <Pressable
