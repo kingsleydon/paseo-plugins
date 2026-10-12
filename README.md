@@ -124,7 +124,8 @@ paseo plugin logs paseo-recap
 ## Releasing
 
 Releases publish to npm from GitHub Actions with [trusted publishing](https://docs.npmjs.com/trusted-publishers)
-(OIDC), so no npm token is stored anywhere. Bump `version` in `package.json` in a PR, merge it,
+(OIDC), so no npm token is stored anywhere. The publish job runs in the `npm` GitHub environment,
+which only `v*` tags can deploy to, and npm trusts only that environment. Bump `version` in `package.json` in a PR, merge it,
 then tag the merged commit:
 
 ```bash
