@@ -7,7 +7,7 @@ what is done, and the next step — and shows it right in the conversation. Glan
 know where it is, without scrolling back. Works with every provider Paseo runs: Claude, Codex,
 OpenCode, OMP, Pi, and custom agents.
 
-![A recap line in a Paseo conversation, with the Recap pill above the composer](docs/images/recap.png)
+![After an agent fixes a login bug, a muted recap line sums up the work and the next step, with the Recap pill above the composer](docs/images/recap.png)
 
 ## Features
 
@@ -22,6 +22,8 @@ OpenCode, OMP, Pi, and custom agents.
 - **Quiet and cheap.** About 40 words, from recent text only. Skips canceled turns, pending
   permissions, context compaction, and providers near their usage limit. ~3 s and ~$0.002 per recap
   with Claude Haiku.
+
+<p align="center"><img src="docs/images/recap-card.png" width="420" alt="The Recap card, opened from the pill, with the summary, the next step, and Regenerate"></p>
 
 ## Requirements
 
