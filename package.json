@@ -1,11 +1,11 @@
 {
   "name": "paseo-recap",
-  "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Provider-agnostic agent recaps for Paseo, like Claude Code's session recap.",
   "license": "MIT",
   "files": [
     "paseo-plugin.json",
+    "OVERVIEW.md",
     "index.client.ts",
     "index.client.tsx",
     "index.server.ts",
@@ -30,5 +30,18 @@
     "typescript": "^5.9.3",
     "vitest": "^3.2.7",
     "zod": "^4.4.3"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kingsleydon/paseo-recap.git"
+  },
+  "homepage": "https://github.com/kingsleydon/paseo-recap#readme",
+  "bugs": {
+    "url": "https://github.com/kingsleydon/paseo-recap/issues"
+  },
+  "keywords": [
+    "paseo",
+    "paseo-plugin",
+    "recap"
+  ]
 }

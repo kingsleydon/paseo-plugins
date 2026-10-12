@@ -33,9 +33,14 @@ OpenCode, OMP, Pi, and custom agents.
 
 ## Install
 
+Install **Recap** from [paseo.sh/plugins](https://paseo.sh/plugins), or from npm:
+
 ```bash
-paseo plugin install github:kingsleydon/paseo-recap
+paseo plugin install npm:paseo-recap
 ```
+
+You can also paste `npm:paseo-recap` into **Settings → Plugins → Plugin source**, or install the
+latest source with `paseo plugin install github:kingsleydon/paseo-recap`.
 
 Recaps start with the next completed turn of each agent. For an agent that is already idle, tap its
 **Recap** pill and choose **Generate**.
