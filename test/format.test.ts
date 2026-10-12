@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pillPresentation, relativeTime, sortViews } from "../client/format";
+import { pillPresentation, relativeTime } from "../client/format";
 import type { RecapView } from "../shared/recap";
 import { makeRecap } from "./fixtures";
 
@@ -29,20 +29,5 @@ describe("pillPresentation", () => {
       label: "Recap · 3m",
       icon: "History",
     });
-  });
-});
-
-describe("sortViews", () => {
-  it("puts first-time generations on top, then newest recaps", () => {
-    const older = { ...base, agentId: "older", recap: makeRecap({ generatedAt: "2026-10-07T10:00:00.000Z" }) };
-    const newer = { ...base, agentId: "newer", recap: makeRecap({ generatedAt: "2026-10-07T11:00:00.000Z" }) };
-    const pendingA = { ...base, agentId: "pending-a", state: "generating" as const };
-    const pendingB = { ...base, agentId: "pending-b", state: "generating" as const };
-    expect(sortViews([older, pendingA, newer, pendingB]).map((view) => view.agentId)).toEqual([
-      "pending-a",
-      "pending-b",
-      "newer",
-      "older",
-    ]);
   });
 });

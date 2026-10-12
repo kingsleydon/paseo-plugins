@@ -25,12 +25,3 @@ export function pillPresentation(view: RecapView | undefined, now: number): Pill
     icon: view.recap.stale ? "History" : "ScrollText",
   };
 }
-
-/** Newest recap first; agents still generating their first recap go on top. */
-export function sortViews(views: readonly RecapView[]): RecapView[] {
-  return [...views].sort((a, b) => {
-    const at = a.recap ? Date.parse(a.recap.generatedAt) : Number.POSITIVE_INFINITY;
-    const bt = b.recap ? Date.parse(b.recap.generatedAt) : Number.POSITIVE_INFINITY;
-    return at === bt ? 0 : bt - at;
-  });
-}

@@ -1,27 +1,18 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
-import { RecapOverview } from "./client/overview";
+import { RecapLine } from "./client/recap-line";
 import { RecapPills } from "./client/pills";
 import { RecapSettingsScreen } from "./client/settings-screen";
-import { recapRegenerateRpc } from "./shared/recap";
+import { RECAP_TIMELINE_KIND, RecapTimelineDataSchema, recapRegenerateRpc } from "./shared/recap";
 
 export default function contribute(client: PluginClientContext) {
   const pills = new RecapPills(client);
   pills.start();
 
-  const removeSurface = client.addSurface("overview", RecapOverview);
-  const removeSidebarItem = client.addSidebarItem({
-    id: "recaps",
-    title: "Recaps",
-    icon: "ScrollText",
-    surface: "overview",
-  });
-  const removeCommandCenterItem = client.addCommandCenterItem({
-    id: "recaps",
-    title: "Show agent recaps",
-    icon: "ScrollText",
-    keywords: ["recap", "summary", "status", "agents"],
-    context: "global",
-    onSelect: ({ openSurface }) => openSurface("overview"),
+  const removeTimelineRenderer = client.addTimelineRenderer({
+    kind: RECAP_TIMELINE_KIND,
+    version: 1,
+    schema: RecapTimelineDataSchema,
+    Component: RecapLine,
   });
 
   const removeSettings = client.addSettingsScreen({
@@ -46,9 +37,7 @@ export default function contribute(client: PluginClientContext) {
   });
 
   return () => {
-    removeSurface();
-    removeSidebarItem();
-    removeCommandCenterItem();
+    removeTimelineRenderer();
     removeSettings();
     removeCommand();
     pills.stop();

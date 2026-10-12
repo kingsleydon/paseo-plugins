@@ -13,15 +13,15 @@ happens next. Claude Code, oh-my-pi (OMP), and Codex each ship an idle "recap" f
 inside their own TUIs. Paseo shows none of them today.
 
 `paseo-recap` generates that recap on the daemon after an agent goes idle, from Paseo's canonical
-timeline, so it works for every provider (Claude, Codex, OMP, Pi, OpenCode, custom). It renders as a
-composer pill with a popover card plus a sidebar overview, never as a timeline row, and never enters
-the agent's model context.
+timeline, so it works for every provider (Claude, Codex, OMP, Pi, OpenCode, custom). Like Claude
+Code, it shows as a muted line in the conversation after the turn it summarizes; a composer pill
+opens the latest recap and its history. It never enters the agent's model context.
 
 ### Goals
 
 - One recap per agent, refreshed when an agent goes idle after meaningful progress.
 - Works for all providers through `AgentTimelineItem`, without provider-specific parsing.
-- Visible without opening the conversation: per-agent pill and a cross-agent overview.
+- Readable without a click: a recap line in the conversation, plus a per-agent pill.
 - Cheap and quiet: generated rarely, short, skipped when it would be stale or redundant.
 - Never feeds back into the agent's context or alters the transcript.
 
@@ -30,7 +30,10 @@ the agent's model context.
 - Replacing context compaction summaries (those serve the model, not the user).
 - Long-form session reports, PR descriptions, or changelogs.
 - Recapping imported/historical sessions automatically (manual `/recap` only).
-- Pinning a card above the timeline (no plugin API exists; see §8).
+- A full recap block above the composer: plugins only get a one-line pill there (max 160 px), and
+  Paseo replaced stacked cards with that track bar on purpose (see §8).
+- A cross-agent recap list: removed to match Claude Code; each agent's recap lives in its own
+  conversation.
 
 ## 2. Background: what a recap is
 
@@ -161,8 +164,8 @@ Available (verified against the installed `@getpaseo/plugin` 0.10.3 types):
 | Daemon config (metadata model order) | `paseo.config.get()` → `metadataGeneration.providers`, `providers.<id>` |
 | Plan usage per provider | `paseo.providers.listUsage()` → `windows[].usedPct` |
 | Backend calls from UI | `defineRpc` + `server.handle` + `useRpc` / `client.rpc` |
-| Pinned per-agent UI | `client.addComposerPill({ workspaceId, agentId, button })` with popover |
-| Cross-agent UI | `addSurface` + `addSidebarItem`, `addCommandCenterItem` |
+| Recap in the conversation | `paseo.agents.ref(id).timeline.append({ type: "plugin", … })` + `client.addTimelineRenderer` |
+| Per-agent UI above the composer | `client.addComposerPill({ workspaceId, agentId, button })` with popover |
 | Manual trigger | `client.addSlashCommand({ name: "recap", context: "agent" })` |
 | Settings | `server.registerSettings` + `client.addSettingsScreen` + `useSettings` |
 
@@ -173,7 +176,10 @@ Missing (drives design choices and upstream asks in §8):
 - No `agent.closed` event in 0.10.3; only archive. → child-block timeout, live status on manual
   recaps, 30-day retention.
 - No user presence/focus or composer-draft signal on the daemon. → idle time only.
-- No slot above the timeline or in the agent header. → composer pill + popover.
+- No slot above the timeline or in the agent header; composer pills are one line. → conversation
+  line + composer pill.
+- Plugin timeline rows live in the daemon's memory only. → lines disappear after a daemon restart;
+  the stored recap and the pill remain.
 - No access to provider-native recap events (OMP `recap_update`).
 - `agent.turn_ended` fires only for live turns, not imports/resumes. → manual `/recap` fetches the
   timeline itself.
@@ -185,10 +191,10 @@ Missing (drives design choices and upstream asks in §8):
 ```
 daemon (plugin subprocess)                                    app (every client)
 ┌──────────────────────────────────────────────┐              ┌──────────────────────────────┐
-│ lifecycle hooks                              │              │ composer pill per agent      │
-│  turn_started / turn_ended / permission_*    │              │  "Recap · 3m" → popover card │
-│  archived ─► RecapScheduler                  │     RPC      │ Recaps surface (sidebar,     │
-│                                              │ ◄──────────► │  Command Center)             │
+│ lifecycle hooks                              │              │ recap line in the timeline   │
+│  turn_started / turn_ended / permission_*    │              │ composer pill per agent      │
+│  archived ─► RecapScheduler                  │     RPC      │  "Recap · 3m" → popover card │
+│  new recap ─► timeline.append (plugin row)   │ ◄──────────► │                              │
 │ RecapScheduler (per-agent state machine)     │ recap.get    │ /recap slash command         │
 │  ├► history.ts  timeline → bounded excerpt   │ recap.list   │ settings screen              │
 │  ├► prompt.ts   rules + JSON schema          │ recap.regen… └──────────────────────────────┘
@@ -384,6 +390,11 @@ any agent update (a recap lands a few seconds after the idle delay), otherwise e
 
 ### 5.9 UI
 
+Conversation line (plugin timeline row `recap`, appended by the daemon when a recap is stored): a
+`ScrollText` icon, the summary, and `Next: …` on its own line, in muted 14 px text like Paseo's
+compaction marker. Each recap is a new row, so it lands after the turn it summarizes, as in Claude
+Code. Rows are display-only and kept in the daemon's memory, so they are gone after a daemon restart.
+
 Composer pill, one per agent:
 
 | State | Label | Icon |
@@ -393,13 +404,10 @@ Composer pill, one per agent:
 | Fresh | `Recap · 3m` | `ScrollText` |
 | Out of date (newer turn) | `Recap · 12m` | `History` |
 
-Popover card: summary, **Next** box, age · model · manual marker, "Out of date" when stale,
-**Regenerate**, and **Earlier (n)** expanding previous recaps. Errors show as one line (e.g. no model
-available, agent running). Model output is rendered as selectable plain text only.
-
-**Recaps** surface (sidebar item and Command Center "Show agent recaps"): every agent's latest recap,
-first-time generations first, then newest; live title and status dot when the agent is in client
-state, stored title otherwise; tap opens the agent on its host.
+Popover card: summary, `Next: …`, age · model · manual marker, "Out of date" when stale,
+**Regenerate** (Paseo's small secondary button), and **Earlier (n)** expanding previous recaps. Errors
+show as one line (e.g. no model available, agent running). Model output is rendered as selectable
+plain text only.
 
 `/recap`: manual recap for the current agent; errors become Paseo's toast.
 
@@ -485,7 +493,7 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
   prompt rendering and output parsing; candidate ordering, CLI arguments, OpenCode event parsing and
   session cleanup, queueing, failure classification, process abort/timeout; usage guard; store
   persistence, history, pruning; scheduler state machine with fake timers for every row in §5.12
-  that applies; pill and overview formatting.
+  that applies, including showing each stored recap in the conversation; pill formatting.
 - Real CLI (`RECAP_E2E=1`): one recap each from Claude Haiku and Codex GPT-6-Luna.
 - Not yet verified: the plugin inside a running Paseo (pill, popover, surface, settings screen,
   mobile layout, light/dark themes, Lucide icon names, `PASEO_HOME` in the plugin process).
@@ -509,7 +517,7 @@ Open a Discussion (feature requests are not accepted as issues) for:
 
 1. M0 — Scheduler, history builder, Claude/Codex adapters, store, composer pill + popover, `/recap`. ✅
 2. M1 — Settings screen, OpenCode adapter, agent-first provider order, usage guard, edge cases. ✅
-3. M2 — Recaps surface, recap history, Command Center entry. ✅
+3. M2 — Recap history; recap line in the conversation (replaced the Recaps surface). ✅
 4. M3 — Verify in a running Paseo; upstream Discussion; publish to paseo-cafe.
 5. Later — switch to `paseo.generate()` / native recaps when available; per-workspace recap.
 

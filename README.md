@@ -17,10 +17,11 @@ and other agent products.
   (Claude Code waits ~3 min; this waits 10 seconds after the turn ends). It is under 40 words, built
   from the last 8 exchanges (user and assistant text only). If you reply within those 10 seconds,
   that turn is skipped. A new turn aborts any generation in flight and marks the recap as out of date.
-- The recap appears as a **Recap** pill above the composer; tap it for the card with the next
-  action, regenerate, and earlier recaps. **Recaps** in the sidebar (or "Show agent recaps" in the
-  Command Center) lists every agent's latest recap. `/recap` creates one on demand.
-- Recaps never enter the agent's context or timeline. They are stored in
+- Like Claude Code, the recap appears as a muted line in the conversation after the turn, with the
+  next action below it. A **Recap** pill above the composer shows its age; tap it to regenerate or
+  see earlier recaps. `/recap` creates one on demand.
+- Recaps never enter the agent's context. The conversation line is display-only and kept in the
+  daemon's memory, so it disappears after a daemon restart. Recaps themselves are stored in
   `$PASEO_HOME/plugin-data/paseo-recap/recaps.json` (latest + 4 previous per agent, pruned after
   30 days, removed when the agent is archived).
 - Skipped automatically: canceled or failed turns, pending permissions or questions, context

@@ -27,7 +27,7 @@ export const StoredRecapSchema = z.object({
   stale: z.boolean(),
   trigger: z.enum(["auto", "manual"]),
   generator: z.object({ provider: z.string(), model: z.string().nullable() }),
-  /** Agent context captured at generation time, for the cross-agent overview. */
+  /** Agent context captured at generation time. */
   agent: z
     .object({
       title: z.string().nullable(),
@@ -37,6 +37,14 @@ export const StoredRecapSchema = z.object({
     .default({ title: null, workspaceId: null, provider: null }),
 });
 export type StoredRecap = z.output<typeof StoredRecapSchema>;
+
+/** A recap shown in the conversation, like Claude Code's recap line. Display-only: never sent to the model. */
+export const RECAP_TIMELINE_KIND = "recap";
+export const RecapTimelineDataSchema = z.object({
+  summary: z.string(),
+  nextAction: z.string().nullable(),
+});
+export type RecapTimelineData = z.output<typeof RecapTimelineDataSchema>;
 
 export const RecapStateSchema = z.enum(["idle", "waiting", "generating", "error"]);
 export type RecapState = z.output<typeof RecapStateSchema>;

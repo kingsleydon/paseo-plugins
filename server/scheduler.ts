@@ -48,6 +48,8 @@ export interface SchedulerDeps {
   generate(prompt: string, signal: AbortSignal, options: GenerateOptions): Promise<GeneratedRecap>;
   /** Fresh timeline for manual recaps of agents this plugin has not observed yet. */
   fetchAgentContext(agentId: string): Promise<AgentContext>;
+  /** Shows a newly stored recap in the agent's conversation. */
+  publish(recap: StoredRecap): Promise<void>;
   log(message: string, detail?: unknown): void;
 }
 
@@ -293,7 +295,7 @@ export class RecapScheduler {
       });
       // Never paint a stale recap: drop results that land after a new turn started.
       if (abort.signal.aborted || entry.revision !== revision || this.#disposed) return;
-      await this.#deps.store.set({
+      const recap: StoredRecap = {
         agentId: entry.id,
         summary: generated.summary,
         nextAction: generated.nextAction,
@@ -304,10 +306,14 @@ export class RecapScheduler {
         trigger,
         generator: { provider: generated.provider, model: generated.model },
         agent: { title: entry.title, workspaceId: entry.workspaceId, provider: entry.provider },
-      });
+      };
+      await this.#deps.store.set(recap);
       entry.failures = 0;
       entry.turnsSinceRecap = 0;
       entry.state = "idle";
+      await this.#deps.publish(recap).catch((error: unknown) => {
+        this.#deps.log(`could not show recap for agent ${entry.id}`, errorText(error));
+      });
     } catch (error) {
       if (abort.signal.aborted || entry.revision !== revision) return;
       if (error instanceof RecapSkippedError) {

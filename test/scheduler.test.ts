@@ -72,14 +72,16 @@ function setup(overrides: Partial<RecapSettings> = GATED) {
     provider: "codex",
     running: false,
   }));
+  const publish = vi.fn(async (_recap: StoredRecap) => undefined);
   const scheduler = new RecapScheduler({
     store,
     generate,
     readSettings: async () => settings,
     fetchAgentContext,
+    publish,
     log: () => undefined,
   });
-  return { store, generate, scheduler, settings, fetchAgentContext };
+  return { store, generate, scheduler, settings, fetchAgentContext, publish };
 }
 
 async function endTurn(scheduler: RecapScheduler, a: PluginHookAgent, timeline: AgentTimelineItem[]) {
@@ -125,7 +127,7 @@ describe("RecapScheduler", () => {
   });
 
   it("generates after the idle delay once enough turns have happened", async () => {
-    const { scheduler, generate, store } = setup();
+    const { scheduler, generate, store, publish } = setup();
     await endTurn(scheduler, agent("a"), turns(2));
     await vi.advanceTimersByTimeAsync(DELAY_MS);
     expect(generate).not.toHaveBeenCalled();
@@ -138,6 +140,16 @@ describe("RecapScheduler", () => {
     expect(generate).toHaveBeenCalledOnce();
     expect(store.get("a")).toMatchObject({ summary: "Recap text.", turnCount: 3, stale: false });
     expect(generate.mock.calls[0]?.[0]).toContain("Overall goal: Ship recaps");
+    expect(publish).toHaveBeenCalledWith(store.get("a"));
+  });
+
+  it("keeps a stored recap when showing it in the conversation fails", async () => {
+    const { scheduler, store, publish } = setup(EVERY_TURN);
+    publish.mockRejectedValueOnce(new Error("timeline unavailable"));
+    await endTurn(scheduler, agent("a"), turns(1));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(store.get("a")?.summary).toBe("Recap text.");
+    expect(scheduler.view("a")).toMatchObject({ state: "idle", error: null });
   });
 
   it("waits turnsBetweenRecaps completed turns before recapping again", async () => {
@@ -164,7 +176,7 @@ describe("RecapScheduler", () => {
   });
 
   it("discards a result when a turn starts during generation", async () => {
-    const { scheduler, generate, store } = setup();
+    const { scheduler, generate, store, publish } = setup();
     let release: () => void = () => undefined;
     generate.mockImplementationOnce(
       (_prompt, signal) =>
@@ -181,6 +193,7 @@ describe("RecapScheduler", () => {
     release();
     await vi.advanceTimersByTimeAsync(0);
     expect(store.get("a")).toBeNull();
+    expect(publish).not.toHaveBeenCalled();
     expect(scheduler.view("a").state).toBe("idle");
   });
 

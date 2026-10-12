@@ -14,37 +14,35 @@ export function recapQueryKey(agentId: string) {
 
 type Theme = PluginHostProps["theme"];
 
+// Sizes follow Paseo's own controls: 15 px content text, 14 px secondary text, 32 px small buttons.
 function useRecapStyles(theme: Theme) {
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    const button = {
+      minHeight: 32,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      gap: 8,
+    };
+    return {
       summary: { color: theme.colors.foreground, fontSize: 15, lineHeight: 21 },
       summaryMuted: { color: theme.colors.foregroundMuted, fontSize: 14, lineHeight: 20 },
-      nextLabel: { color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" as const },
       next: { color: theme.colors.foreground, fontSize: 14, lineHeight: 20 },
-      nextBox: {
-        gap: 4,
-        padding: 10,
-        borderRadius: 8,
-        backgroundColor: theme.colors.surface1,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-      },
+      nextLabel: { color: theme.colors.foregroundMuted },
       meta: { color: theme.colors.foregroundMuted, fontSize: 12 },
-      error: { color: theme.colors.statusDanger, fontSize: 13 },
+      error: { color: theme.colors.statusDanger, fontSize: 14, lineHeight: 20 },
       row: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
-      button: {
-        alignSelf: "flex-start" as const,
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 8,
-        backgroundColor: theme.colors.surface2,
-      },
-      buttonText: { color: theme.colors.foreground, fontSize: 13, fontWeight: "600" as const },
-      link: { color: theme.colors.foregroundMuted, fontSize: 13, fontWeight: "600" as const },
-      earlier: { gap: 10, paddingTop: 4, borderTopWidth: 1, borderTopColor: theme.colors.border },
-    }),
-    [theme],
-  );
+      button: { ...button, backgroundColor: theme.colors.surface2 },
+      ghostButton: { ...button, backgroundColor: "transparent" },
+      buttonText: { color: theme.colors.foreground, fontSize: 14 },
+      ghostButtonText: { color: theme.colors.foregroundMuted, fontSize: 14 },
+      pressed: { opacity: 0.85 },
+      disabled: { opacity: 0.5 },
+      earlier: { gap: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: theme.colors.border },
+    };
+  }, [theme]);
 }
 
 export function recapAge(recap: StoredRecap, now: number): string {
@@ -69,12 +67,10 @@ export function RecapBody({
         {recap.summary}
       </Text>
       {recap.nextAction && !muted ? (
-        <View style={styles.nextBox}>
-          <Text style={styles.nextLabel}>Next</Text>
-          <Text style={styles.next} selectable>
-            {recap.nextAction}
-          </Text>
-        </View>
+        <Text style={styles.next} selectable>
+          <Text style={styles.nextLabel}>Next: </Text>
+          {recap.nextAction}
+        </Text>
       ) : null}
       <Text style={styles.meta}>
         {recap.stale && !muted ? "Out of date · " : ""}
@@ -133,7 +129,7 @@ function RecapCard({
   const error = query.error || regenerate.error ? "Could not load the recap." : (view?.error ?? null);
 
   return (
-    <View style={{ gap: 12, maxWidth: layout.compact ? undefined : 420 }}>
+    <View style={{ gap: 12, maxWidth: layout.compact ? undefined : 400 }}>
       {query.isPending ? <ActivityIndicator color={theme.colors.foregroundMuted} /> : null}
       {recap ? (
         <RecapBody theme={theme} recap={recap} />
@@ -148,18 +144,19 @@ function RecapCard({
           accessibilityState={{ disabled: generating, busy: generating }}
           disabled={generating}
           onPress={() => regenerate.mutate()}
-          style={styles.button}
+          style={({ pressed }) => [styles.button, pressed && styles.pressed, generating && styles.disabled]}
         >
+          {generating ? <ActivityIndicator size="small" color={theme.colors.foregroundMuted} /> : null}
           <Text style={styles.buttonText}>{generating ? "Generating…" : "Regenerate"}</Text>
         </Pressable>
-        {generating ? <ActivityIndicator size="small" color={theme.colors.foregroundMuted} /> : null}
         {previous.length > 0 ? (
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ expanded: showEarlier }}
             onPress={() => setShowEarlier((value) => !value)}
+            style={({ pressed }) => [styles.ghostButton, pressed && styles.pressed]}
           >
-            <Text style={styles.link}>
+            <Text style={styles.ghostButtonText}>
               {showEarlier ? "Hide earlier" : `Earlier (${previous.length})`}
             </Text>
           </Pressable>

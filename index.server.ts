@@ -7,8 +7,10 @@ import {
   recapGetRpc,
   recapListRpc,
   recapRegenerateRpc,
+  RECAP_TIMELINE_KIND,
   recapSettings,
   type RecapSettings,
+  type RecapTimelineData,
 } from "./shared/recap";
 import {
   errorMessage,
@@ -90,6 +92,17 @@ export default function contribute(server: PluginServerContext) {
         provider: payload.agent?.provider ?? null,
         running: payload.agent?.status === "running",
       };
+    },
+    async publish(recap) {
+      const data: RecapTimelineData = { summary: recap.summary, nextAction: recap.nextAction };
+      await requirePaseo().agents.ref(recap.agentId).timeline.append({
+        type: "plugin",
+        // One row per recap, so each lands after the turn it summarizes.
+        id: `recap:${recap.generatedAt}`,
+        kind: RECAP_TIMELINE_KIND,
+        version: 1,
+        data,
+      });
     },
   });
 
