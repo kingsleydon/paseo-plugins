@@ -2,7 +2,7 @@ import type { PluginButtonContentProps, PluginHostProps } from "@getpaseo/plugin
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { recapGetRpc, recapRegenerateRpc, type RecapView, type StoredRecap } from "../shared/recap";
 import { relativeTime } from "./format";
@@ -38,7 +38,10 @@ function useRecapStyles(theme: Theme) {
       row: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
       button: { ...button, backgroundColor: theme.colors.surface2 },
       ghostButton: { ...button, minHeight: 28, gap: 6, backgroundColor: "transparent" },
-      ghostRow: { marginLeft: -button.paddingHorizontal },
+      metaRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
+      metaText: { flex: 1, color: theme.colors.foregroundMuted, fontSize: 12 },
+      // Ghost buttons have no background; outdent them so their labels line up with the card edge.
+      actions: { flexDirection: "row" as const, alignItems: "center" as const, marginRight: -button.paddingHorizontal },
       buttonText: { color: theme.colors.foreground, fontSize: 14 },
       ghostButtonText: { color: theme.colors.foregroundMuted, fontSize: 12 },
       pressed: { opacity: 0.85 },
@@ -58,10 +61,13 @@ export function RecapBody({
   theme,
   recap,
   muted = false,
+  actions = null,
 }: {
   theme: Theme;
   recap: StoredRecap;
   muted?: boolean;
+  /** Quiet buttons shown at the end of the metadata line. */
+  actions?: ReactNode;
 }) {
   const styles = useRecapStyles(theme);
   return (
@@ -75,12 +81,15 @@ export function RecapBody({
           {recap.nextAction}
         </Text>
       ) : null}
-      <Text style={styles.meta}>
-        {recap.stale && !muted ? "Out of date · " : ""}
-        {recapAge(recap, Date.now())}
-        {` · ${recap.generator.model ?? recap.generator.provider}`}
-        {recap.trigger === "manual" ? " · manual" : ""}
-      </Text>
+      <View style={styles.metaRow}>
+        <Text style={styles.metaText}>
+          {recap.stale && !muted ? "Out of date · " : ""}
+          {recapAge(recap, Date.now())}
+          {` · ${recap.generator.model ?? recap.generator.provider}`}
+          {recap.trigger === "manual" ? " · manual" : ""}
+        </Text>
+        {actions}
+      </View>
     </>
   );
 }
@@ -135,52 +144,66 @@ function RecapCard({
   const generating = view?.state === "generating" || regenerate.isPending;
   const error = query.error || regenerate.error ? "Could not load the recap." : (view?.error ?? null);
 
+  const generateButton = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={recap ? "Regenerate recap" : "Generate recap"}
+      accessibilityState={{ disabled: generating, busy: generating }}
+      disabled={generating}
+      onPress={() => regenerate.mutate()}
+      style={({ pressed }) => [
+        recap ? styles.ghostButton : styles.button,
+        pressed && styles.pressed,
+        generating && styles.disabled,
+      ]}
+    >
+      {generating ? (
+        <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
+      ) : recap ? (
+        <Icon name="RefreshCw" size={12} color={theme.colors.foregroundMuted} />
+      ) : null}
+      <Text style={recap ? styles.ghostButtonText : styles.buttonText}>
+        {generating ? "Generating…" : recap ? "Regenerate" : "Generate"}
+      </Text>
+    </Pressable>
+  );
+  const earlierButton =
+    previous.length > 0 ? (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: showEarlier }}
+        onPress={() => setShowEarlier((value) => !value)}
+        style={({ pressed }) => [styles.ghostButton, pressed && styles.pressed]}
+      >
+        <Text style={styles.ghostButtonText}>{showEarlier ? "Hide earlier" : `Earlier (${previous.length})`}</Text>
+      </Pressable>
+    ) : null;
+
   return (
     <View style={{ gap: 12, maxWidth: layout.compact ? undefined : 400 }}>
       {query.isPending ? <ActivityIndicator color={theme.colors.foregroundMuted} /> : null}
       {recap ? (
-        <RecapBody theme={theme} recap={recap} />
-      ) : !query.isPending && !generating ? (
-        <Text style={styles.meta}>No recap yet. One appears after this agent's next turn, or generate it now.</Text>
-      ) : null}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {/* With a recap shown, regenerating is secondary: a ghost button, outdented so its label lines up
-          with the text above. Without one, Generate is the card's main action. */}
-      <View style={[styles.row, recap && styles.ghostRow]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={recap ? "Regenerate recap" : "Generate recap"}
-          accessibilityState={{ disabled: generating, busy: generating }}
-          disabled={generating}
-          onPress={() => regenerate.mutate()}
-          style={({ pressed }) => [
-            recap ? styles.ghostButton : styles.button,
-            pressed && styles.pressed,
-            generating && styles.disabled,
-          ]}
-        >
-          {generating ? (
-            <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-          ) : recap ? (
-            <Icon name="RefreshCw" size={12} color={theme.colors.foregroundMuted} />
+        // With a recap shown, regenerating is secondary: quiet buttons on the metadata line.
+        <RecapBody
+          theme={theme}
+          recap={recap}
+          actions={
+            <View style={styles.actions}>
+              {generateButton}
+              {earlierButton}
+            </View>
+          }
+        />
+      ) : (
+        // Without one, Generate is the card's main action.
+        <>
+          {!query.isPending && !generating ? (
+            <Text style={styles.meta}>No recap yet. One appears after this agent's next turn, or generate it now.</Text>
           ) : null}
-          <Text style={recap ? styles.ghostButtonText : styles.buttonText}>
-            {generating ? "Generating…" : recap ? "Regenerate" : "Generate"}
-          </Text>
-        </Pressable>
-        {previous.length > 0 ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ expanded: showEarlier }}
-            onPress={() => setShowEarlier((value) => !value)}
-            style={({ pressed }) => [styles.ghostButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.ghostButtonText}>
-              {showEarlier ? "Hide earlier" : `Earlier (${previous.length})`}
-            </Text>
-          </Pressable>
-        ) : null}
-      </View>
+          <View style={styles.row}>{generateButton}</View>
+        </>
+      )}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
       {showEarlier ? (
         <View style={styles.earlier}>
           {previous.map((item) => (
