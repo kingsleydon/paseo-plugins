@@ -26,9 +26,11 @@ Open **Settings → Plugins → paseo-recap → Recap**.
 
 ## Data and permissions
 
-A recap reads only the text of recent user and assistant messages, plus the agent's title and its current to-do item. It never reads tool output, file contents, or reasoning. That text is sent to the model you chose, through its command line tool, and nowhere else.
+A recap reads only the text of recent user and assistant messages, plus the agent's title and its current to-do item. It never reads tool output, file contents, or reasoning. That text goes to one model at a time, through its command line tool.
 
-Claude runs with no tools, MCP servers, or user settings. Codex runs in a read-only sandbox with your own Codex configuration, which includes any MCP servers you have set up there. OpenCode runs its read-only plan agent. Each run uses a temporary folder and leaves no session behind.
+With **Same as agent** or **Metadata model**, a model that is unavailable or fails is followed by the next one: the agent's own provider first (for Same as agent), then the models in Paseo's metadata generation settings, then Claude Haiku, then Codex GPT-6-Luna. Any of those providers can therefore receive the conversation text. Choosing Claude, Codex, or OpenCode with a model name sends recaps only to that provider, with no fallback.
+
+Claude runs with no tools, MCP servers, or user settings. Codex runs in a read-only sandbox with your own Codex configuration, which includes any MCP servers you have set up there. OpenCode runs its read-only plan agent. Each run uses a temporary folder. Claude and Codex runs are not saved as sessions. OpenCode always saves one, and the plugin deletes it right after the run; if that deletion fails, the session stays in OpenCode.
 
 Recaps are saved with owner-only permissions in the Paseo data folder, kept for 30 days, and deleted when the agent is archived.
 

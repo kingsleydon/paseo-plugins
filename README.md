@@ -64,7 +64,8 @@ you type.
 2. The recap is stored under `$PASEO_HOME/plugin-data/paseo-recap/` and appended to the
    conversation as a plugin row. A new turn cancels a pending recap and marks the last one out of
    date.
-3. CLIs run one-shot in a temporary directory with your existing login and leave no session behind.
+3. CLIs run one-shot in a temporary directory with your existing login. Claude and Codex save no
+   session; OpenCode's session is deleted right after the run (logged if that fails).
    At most two run at once; a CLI that is missing, logged out, or rate limited is skipped for ten
    minutes and the next model is tried.
 
@@ -79,8 +80,10 @@ Code, Codex, and OMP.
 
 ## Privacy and security
 
-- Recaps send recent conversation text to the model you choose, using that CLI's login. Nothing is
-  sent anywhere else.
+- Recaps send recent conversation text to one model at a time, using that CLI's login. With
+  **Same as agent** or **Metadata model**, a model that is unavailable or fails is followed by the
+  next: the agent's own provider, Paseo's metadata generation models, then Claude Haiku and Codex
+  GPT-6-Luna, so any of them can receive that text. A specific provider gets recaps only for itself.
 - Claude runs with no tools, MCP servers, or settings. Codex runs in a read-only sandbox with your
   own Codex configuration, including any MCP servers you set up there. OpenCode uses its read-only
   `plan` agent, which rejects permission requests.
