@@ -1,84 +1,279 @@
-import { useSettings, type PluginSurfaceProps } from "@getpaseo/plugin/client";
+import { useSettings, type PluginSurfaceProps, type SettingsState } from "@getpaseo/plugin/client";
 import {
   SettingsAction,
   SettingsCard,
+  SettingsInput,
   SettingsRow,
   SettingsSection,
   SettingsSelect,
   SettingsSwitch,
 } from "@getpaseo/plugin/client/ui";
+import { useEffect, useRef, useState } from "react";
 import { Text } from "react-native";
 import {
+  MODEL_ID_PATTERN,
   recapSettings,
+  SETTING_RANGES,
   type GeneratorChoice,
   type GeneratorMode,
   type RecapSettings,
 } from "../shared/recap";
 
-const IDLE_DELAY_OPTIONS = [
-  { label: "Immediately", value: "0" },
-  { label: "10 seconds", value: "10" },
-  { label: "30 seconds", value: "30" },
-  { label: "1 minute", value: "60" },
-  { label: "2 minutes", value: "120" },
-  { label: "5 minutes", value: "300" },
-  { label: "10 minutes", value: "600" },
-] as const;
+/** Typing pauses this long before a valid value is saved, so each keystroke is not a save. */
+const SAVE_DELAY_MS = 600;
 
-const FREQUENCY_OPTIONS = [
-  { label: "Every turn", value: "1" },
-  { label: "Every 2 turns", value: "2" },
-  { label: "Every 3 turns", value: "3" },
-  { label: "Every 5 turns", value: "5" },
-] as const;
+type ReadySettings = Extract<SettingsState<typeof recapSettings.schema>, { status: "ready" }>;
+type Save = (patch: Partial<RecapSettings>) => void;
 
-const MIN_TURNS_OPTIONS = [
-  { label: "1 message", value: "1" },
-  { label: "2 messages", value: "2" },
-  { label: "3 messages", value: "3" },
-  { label: "5 messages", value: "5" },
-] as const;
-
-const GENERATOR_OPTIONS = [
+const MODEL_SOURCE_OPTIONS = [
   { label: "Same as agent", value: "auto" },
   { label: "Metadata model", value: "metadata" },
-  { label: "Claude Haiku", value: "claude:haiku" },
-  { label: "Codex GPT-6-Luna", value: "codex:gpt-6-luna" },
-  { label: "Codex default", value: "codex:" },
-  { label: "OpenCode default", value: "opencode:" },
+  { label: "Claude", value: "claude" },
+  { label: "Codex", value: "codex" },
+  { label: "OpenCode", value: "opencode" },
 ] as const;
+type ModelSource = (typeof MODEL_SOURCE_OPTIONS)[number]["value"];
 
-/** Explains the selected option, like Paseo's own Metadata generation page. */
-const GENERATOR_HINTS: Record<string, string> = {
+/** Suggested when switching to a provider: its small, fast model, or the CLI default. */
+const SUGGESTED_MODELS: Record<string, string | undefined> = { claude: "haiku", codex: "gpt-6-luna" };
+
+const MODEL_SOURCE_HINTS: Record<ModelSource, string> = {
   auto: "Recaps use the agent's own provider, so the conversation stays with the vendor you chose. If it is unavailable, the Metadata generation model is used.",
-  metadata: "Recaps use the model from Settings → Metadata generation, the one Paseo uses for titles and commit messages.",
-  "claude:haiku": "Recaps always use Claude Haiku.",
-  "codex:gpt-6-luna": "Recaps always use Codex GPT-6-Luna.",
-  "codex:": "Recaps always use Codex's default model.",
-  "opencode:": "Recaps always use OpenCode's default model.",
+  metadata:
+    "Recaps use the model from Settings → Metadata generation, the one Paseo uses for titles and commit messages.",
+  claude: "Recaps always use Claude.",
+  codex: "Recaps always use Codex.",
+  opencode: "Recaps always use OpenCode.",
 };
-const GENERATOR_HINT_SUFFIX = " Runs the provider's CLI on this computer with your existing login.";
+const CLI_HINT = " Runs the provider's CLI on this computer with your existing login.";
 
-function generatorValue(generator: RecapSettings["generator"]): string {
-  return typeof generator === "string" ? generator : `${generator.provider}:${generator.model ?? ""}`;
+function modelSource(generator: RecapSettings["generator"]): ModelSource {
+  if (typeof generator === "string") return generator;
+  return MODEL_SOURCE_OPTIONS.some((option) => option.value === generator.provider)
+    ? (generator.provider as ModelSource)
+    : "auto";
 }
 
-function parseGenerator(value: string): GeneratorMode | GeneratorChoice {
-  if (value === "auto" || value === "metadata") return value;
-  const separator = value.indexOf(":");
-  const provider = separator < 0 ? value : value.slice(0, separator);
-  // OpenCode models are "provider/model"; only the first colon separates our fields.
-  const model = separator < 0 ? "" : value.slice(separator + 1);
-  return model === "" ? { provider } : { provider, model };
+function generatorFor(source: ModelSource): GeneratorMode | GeneratorChoice {
+  if (source === "auto" || source === "metadata") return source;
+  const model = SUGGESTED_MODELS[source];
+  return model ? { provider: source, model } : { provider: source };
 }
 
-/** Keeps a stored value selectable even when it is not one of the presets. */
-function withCurrent(
-  options: ReadonlyArray<{ label: string; value: string }>,
-  value: string,
-  label: string,
-): Array<{ label: string; value: string }> {
-  return options.some((option) => option.value === value) ? [...options] : [...options, { label, value }];
+/**
+ * A text field that saves once its value is valid and typing pauses. Invalid text stays in the
+ * field with an explanation and is never saved.
+ */
+function ValidatedInput({
+  label,
+  hint,
+  initialValue,
+  placeholder,
+  disabled,
+  parse,
+  onValid,
+}: {
+  label: string;
+  hint: string;
+  initialValue: string;
+  placeholder?: string;
+  disabled: boolean;
+  /** Returns the value to save, or an error message. */
+  parse(text: string): { value: string } | { error: string };
+  onValid(value: string): void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+  const onChangeText = (text: string) => {
+    if (timer.current) clearTimeout(timer.current);
+    const result = parse(text);
+    if ("error" in result) {
+      setError(result.error);
+      return;
+    }
+    setError(null);
+    timer.current = setTimeout(() => onValid(result.value), SAVE_DELAY_MS);
+  };
+  return (
+    <SettingsInput
+      label={label}
+      hint={hint}
+      initialValue={initialValue}
+      placeholder={placeholder}
+      disabled={disabled}
+      error={error}
+      onChangeText={onChangeText}
+    />
+  );
+}
+
+function NumberInput({
+  setting,
+  label,
+  hint,
+  values,
+  disabled,
+  save,
+}: {
+  setting: keyof typeof SETTING_RANGES;
+  label: string;
+  hint: string;
+  values: RecapSettings;
+  disabled: boolean;
+  save: Save;
+}) {
+  const { min, max } = SETTING_RANGES[setting];
+  const current = values[setting];
+  return (
+    <ValidatedInput
+      label={label}
+      hint={`${hint} ${min}–${max}.`}
+      initialValue={String(current)}
+      disabled={disabled}
+      parse={(text) => {
+        const trimmed = text.trim();
+        const value = Number(trimmed);
+        if (!/^\d+$/.test(trimmed) || value < min || value > max) {
+          return { error: `Enter a whole number from ${min} to ${max}.` };
+        }
+        return { value: String(value) };
+      }}
+      onValid={(value) => {
+        if (Number(value) !== current) save({ [setting]: Number(value) });
+      }}
+    />
+  );
+}
+
+function RecapSettingsForm({ settings }: { settings: ReadySettings }) {
+  const { values } = settings;
+  // Debounced saves fire after later renders; always write onto the latest document.
+  const latest = useRef(settings);
+  latest.current = settings;
+  const save: Save = (patch) => {
+    const { values: currentValues, revision } = latest.current;
+    void latest.current.save({ ...currentValues, ...patch }, revision);
+  };
+  // Text fields stay editable while saving; locking them would interrupt typing.
+  const disabled = settings.saving;
+  const autoDisabled = disabled || !values.autoRecap;
+  const autoInputDisabled = !values.autoRecap;
+  const source = modelSource(values.generator);
+  const model = typeof values.generator === "string" ? "" : (values.generator.model ?? "");
+
+  return (
+    <>
+      <SettingsSection title="Automatic recaps">
+        <SettingsCard>
+          <SettingsSwitch
+            label="Generate recaps automatically"
+            hint="Manual /recap always works."
+            value={values.autoRecap}
+            disabled={disabled}
+            onValueChange={(autoRecap) => save({ autoRecap })}
+          />
+          <NumberInput
+            setting="turnsBetweenRecaps"
+            label="Every N turns"
+            hint="Completed turns between recaps; 1 recaps after every turn."
+            values={values}
+            disabled={autoInputDisabled}
+            save={save}
+          />
+          <NumberInput
+            setting="idleDelaySeconds"
+            label="Wait after a turn (seconds)"
+            hint="If you reply sooner, that turn is not recapped."
+            values={values}
+            disabled={autoInputDisabled}
+            save={save}
+          />
+          <NumberInput
+            setting="minTurns"
+            label="Start after (messages)"
+            hint="Your messages before a session gets its first recap."
+            values={values}
+            disabled={autoInputDisabled}
+            save={save}
+          />
+          <SettingsSwitch
+            label="Recap subagents"
+            hint="Also recap agents that other agents start."
+            value={values.includeSubagents}
+            disabled={autoDisabled}
+            onValueChange={(includeSubagents) => save({ includeSubagents })}
+          />
+          <SettingsSwitch
+            label="Wait for subagents"
+            hint="Hold an agent's recap while its subagents run, up to 10 minutes."
+            value={values.waitForSubagents}
+            disabled={autoDisabled}
+            onValueChange={(waitForSubagents) => save({ waitForSubagents })}
+          />
+        </SettingsCard>
+      </SettingsSection>
+      <SettingsSection title="Recap content">
+        <SettingsCard>
+          <NumberInput
+            setting="historyExchanges"
+            label="Recent exchanges to read"
+            hint="Each is one of your messages and the reply. Text only, within about 8,000 tokens; the oldest are dropped first."
+            values={values}
+            disabled={false}
+            save={save}
+          />
+        </SettingsCard>
+      </SettingsSection>
+      <SettingsSection title="Model">
+        <SettingsCard>
+          <SettingsSelect
+            label="Recap model"
+            hint={MODEL_SOURCE_HINTS[source] + CLI_HINT}
+            value={source}
+            options={MODEL_SOURCE_OPTIONS}
+            disabled={disabled}
+            onValueChange={(next) => save({ generator: generatorFor(next) })}
+          />
+          {source === "auto" || source === "metadata" ? null : (
+            <ValidatedInput
+              // Remount per provider so the field shows the newly selected provider's model.
+              key={source}
+              label="Model name"
+              hint="Any model id the CLI accepts, such as haiku or gpt-6-luna. Leave empty for the CLI's default."
+              initialValue={model}
+              placeholder="CLI default"
+              disabled={false}
+              parse={(text) => {
+                const trimmed = text.trim();
+                if (trimmed !== "" && (trimmed.length > 200 || !MODEL_ID_PATTERN.test(trimmed))) {
+                  return { error: "Use letters, digits, and . _ : / @ + - only, without spaces." };
+                }
+                return { value: trimmed };
+              }}
+              onValid={(next) => {
+                if (next !== model) {
+                  save({ generator: next === "" ? { provider: source } : { provider: source, model: next } });
+                }
+              }}
+            />
+          )}
+        </SettingsCard>
+      </SettingsSection>
+      {settings.saveError ? (
+        <SettingsSection title="Error">
+          <SettingsCard>
+            <SettingsRow label="Could not save settings" error={settings.saveError} />
+          </SettingsCard>
+        </SettingsSection>
+      ) : null}
+    </>
+  );
 }
 
 export function RecapSettingsScreen({ theme }: PluginSurfaceProps) {
@@ -104,85 +299,5 @@ export function RecapSettingsScreen({ theme }: PluginSurfaceProps) {
       </SettingsSection>
     );
   }
-
-  const { values, revision } = settings;
-  const update = (patch: Partial<RecapSettings>) => void settings.save({ ...values, ...patch }, revision);
-  const disabled = settings.saving;
-  const idleValue = String(values.idleDelaySeconds);
-  const frequencyValue = String(values.turnsBetweenRecaps);
-  const minTurnsValue = String(values.minTurns);
-  const generator = generatorValue(values.generator);
-
-  return (
-    <>
-      <SettingsSection title="Automatic recaps">
-        <SettingsCard>
-          <SettingsSwitch
-            label="Generate recaps automatically"
-            hint="Manual /recap always works."
-            value={values.autoRecap}
-            disabled={disabled}
-            onValueChange={(autoRecap) => update({ autoRecap })}
-          />
-          <SettingsSelect
-            label="Frequency"
-            hint="Completed turns between recaps."
-            value={frequencyValue}
-            options={withCurrent(FREQUENCY_OPTIONS, frequencyValue, `Every ${frequencyValue} turns`)}
-            disabled={disabled || !values.autoRecap}
-            onValueChange={(value) => update({ turnsBetweenRecaps: Number(value) })}
-          />
-          <SettingsSelect
-            label="Wait after a turn ends"
-            hint="If you reply sooner, that turn is not recapped."
-            value={idleValue}
-            options={withCurrent(IDLE_DELAY_OPTIONS, idleValue, `${idleValue} seconds`)}
-            disabled={disabled || !values.autoRecap}
-            onValueChange={(value) => update({ idleDelaySeconds: Number(value) })}
-          />
-          <SettingsSelect
-            label="Start after"
-            hint="User messages before a session gets its first recap."
-            value={minTurnsValue}
-            options={withCurrent(MIN_TURNS_OPTIONS, minTurnsValue, `${minTurnsValue} messages`)}
-            disabled={disabled || !values.autoRecap}
-            onValueChange={(value) => update({ minTurns: Number(value) })}
-          />
-          <SettingsSwitch
-            label="Recap subagents"
-            hint="Also recap agents that other agents start."
-            value={values.includeSubagents}
-            disabled={disabled || !values.autoRecap}
-            onValueChange={(includeSubagents) => update({ includeSubagents })}
-          />
-          <SettingsSwitch
-            label="Wait for subagents"
-            hint="Hold an agent's recap while its subagents run, up to 10 minutes."
-            value={values.waitForSubagents}
-            disabled={disabled || !values.autoRecap}
-            onValueChange={(waitForSubagents) => update({ waitForSubagents })}
-          />
-        </SettingsCard>
-      </SettingsSection>
-      <SettingsSection title="Model">
-        <SettingsCard>
-          <SettingsSelect
-            label="Recap model"
-            hint={(GENERATOR_HINTS[generator] ?? `Recaps always use ${generator}.`) + GENERATOR_HINT_SUFFIX}
-            value={generator}
-            options={withCurrent(GENERATOR_OPTIONS, generator, generator)}
-            disabled={disabled}
-            onValueChange={(value) => update({ generator: parseGenerator(value) })}
-          />
-        </SettingsCard>
-      </SettingsSection>
-      {settings.saveError ? (
-        <SettingsSection title="Error">
-          <SettingsCard>
-            <SettingsRow label="Could not save settings" error={settings.saveError} />
-          </SettingsCard>
-        </SettingsSection>
-      ) : null}
-    </>
-  );
+  return <RecapSettingsForm settings={settings} />;
 }

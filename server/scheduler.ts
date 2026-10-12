@@ -279,9 +279,12 @@ export class RecapScheduler {
 
   async #generate(entry: AgentEntry, trigger: Trigger, abort: AbortController): Promise<void> {
     const revision = entry.revision;
+    const { historyExchanges } = await this.#deps.readSettings();
+    // A turn may have started while settings loaded; it has already reset this entry.
+    if (abort.signal.aborted || entry.revision !== revision || this.#disposed) return;
     const timeline = entry.timeline ?? [];
     const context = { goal: entry.title, activeTask: latestActiveTask(timeline) };
-    const input = buildRecapInput(timeline, historyBudget(context));
+    const input = buildRecapInput(timeline, historyBudget(context), historyExchanges);
     if (input.history === "") {
       entry.state = "idle";
       entry.error = trigger === "manual" ? "There is no conversation to recap yet." : null;

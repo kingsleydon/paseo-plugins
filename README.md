@@ -15,7 +15,7 @@ and other agent products.
 
 - Like Claude Code, the first recap comes after 3 of your messages; after that, one follows every
   completed turn, 10 seconds after it ends (Claude Code waits ~3 min and recaps every 2 turns). It is under 40 words, built
-  from the last 8 exchanges (user and assistant text only). If you reply within those 10 seconds,
+  from the last 8 exchanges by default (user and assistant text only). If you reply within those 10 seconds,
   that turn is skipped. A new turn aborts any generation in flight and marks the recap as out of date.
 - Like Claude Code, the recap appears as a muted line in the conversation after the turn, with the
   next action below it. A **Recap** pill above the composer shows its age; tap it to regenerate or
@@ -31,8 +31,10 @@ and other agent products.
 
 ### Settings
 
-**Settings → Plugins → paseo-recap → Recap**: automatic recaps on/off, frequency (every 1–5 turns),
-wait after a turn (immediately to 10 min), first recap after N messages, subagents, and model.
+**Settings → Plugins → paseo-recap → Recap**: automatic recaps on/off, every N turns (1–50), wait
+after a turn (0–3600 s), first recap after N messages (1–50), recent exchanges to read (1–100),
+recapping and waiting for subagents, and the model (same as the agent, Paseo's metadata model, or any
+Claude, Codex, or OpenCode model id). Numbers and model ids are typed in and checked as you type.
 
 ### Model
 

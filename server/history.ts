@@ -1,7 +1,16 @@
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
+import { SETTING_RANGES } from "../shared/recap";
 
-/** Recent exchanges kept for a recap, following Codex's recap history selection. */
-export const HISTORY_MAX_EXCHANGES = 8;
+/** Most exchanges a recap can read; the `historyExchanges` setting picks how many, up to this. */
+export const HISTORY_EXCHANGES_LIMIT = SETTING_RANGES.historyExchanges.max;
+/** Timeline items a recap reads; everything else is dropped before holding a timeline in memory. */
+const RECAP_ITEM_TYPES: ReadonlySet<AgentTimelineItem["type"]> = new Set([
+  "user_message",
+  "assistant_message",
+  "error",
+  "compaction",
+  "todo",
+]);
 
 const OMITTED_HISTORY = "[Earlier exchanges omitted]\n\n";
 const EXCERPT_MARKER = "\n[... excerpted ...]\n";
@@ -25,30 +34,32 @@ export interface RecapInput {
 export function buildRecapInput(
   timeline: readonly AgentTimelineItem[],
   maxHistoryBytes: number,
+  maxExchanges: number,
 ): RecapInput {
   const exchanges = collectExchanges(timeline);
   return {
-    history: formatHistory(exchanges.slice(-HISTORY_MAX_EXCHANGES), maxHistoryBytes),
+    history: formatHistory(exchanges.slice(-maxExchanges), maxHistoryBytes),
     userTurns: countUserTurns(timeline),
     activeTask: latestActiveTask(timeline),
   };
 }
 
 /**
- * Keeps only what a recap reads: the last exchanges plus the latest todo list. Turn-ended events
- * carry the whole conversation, which is too much to hold for every agent.
+ * Keeps only what a recap can read: the text items of the last `HISTORY_EXCHANGES_LIMIT` exchanges
+ * plus the latest todo list. Turn-ended events carry the whole conversation, including tool output,
+ * which is too much to hold for every agent.
  */
 export function trimForRecap(timeline: readonly AgentTimelineItem[]): AgentTimelineItem[] {
   let seen = 0;
   let start = 0;
   for (let index = timeline.length - 1; index >= 0; index--) {
     const item = timeline[index];
-    if (item?.type === "user_message" && item.text.trim() !== "" && ++seen === HISTORY_MAX_EXCHANGES) {
+    if (item?.type === "user_message" && item.text.trim() !== "" && ++seen === HISTORY_EXCHANGES_LIMIT) {
       start = index;
       break;
     }
   }
-  const kept = timeline.slice(start);
+  const kept = timeline.slice(start).filter((item) => RECAP_ITEM_TYPES.has(item.type));
   if (kept.some((item) => item.type === "todo")) return kept;
   const latestTodo = timeline.findLast((item) => item.type === "todo");
   return latestTodo ? [latestTodo, ...kept] : kept;

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { RecapGenerator, resolveCandidates, runProcess } from "../server/generators";
 import { buildRecapInput, latestActiveTask } from "../server/history";
 import { historyBudget, renderPrompt } from "../server/prompt";
+import { recapSettings } from "../shared/recap";
 
 // Calls real CLIs with the user's logins and costs a few cents. Run with RECAP_E2E=1.
 const enabled = process.env.RECAP_E2E === "1";
@@ -42,7 +43,8 @@ describe.skipIf(!enabled)("real recap generation", () => {
         log: (message, detail) => console.error(message, detail),
       });
       const context = { goal: "paseo-recap plugin", activeTask: latestActiveTask(timeline) };
-      const input = buildRecapInput(timeline, historyBudget(context));
+      const { historyExchanges } = recapSettings.schema.parse({});
+      const input = buildRecapInput(timeline, historyBudget(context), historyExchanges);
       const started = Date.now();
       const recap = await generator.generate(
         renderPrompt(input.history, context),

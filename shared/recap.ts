@@ -11,9 +11,12 @@ export const RECAP_NEXT_ACTION_MAX_CHARS = 200;
 export const GeneratorModeSchema = z.enum(["auto", "metadata"]);
 export type GeneratorMode = z.output<typeof GeneratorModeSchema>;
 
+/** Model ids become a CLI argument, so they may not start with "-" or contain spaces. */
+export const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$/;
+
 export const GeneratorChoiceSchema = z.object({
   provider: z.string().min(1),
-  model: z.string().min(1).optional(),
+  model: z.string().max(200).regex(MODEL_ID_PATTERN).optional(),
 });
 export type GeneratorChoice = z.output<typeof GeneratorChoiceSchema>;
 
@@ -77,6 +80,20 @@ export const recapRegenerateRpc = defineRpc({
   output: RecapViewSchema,
 });
 
+/** Inclusive ranges for numeric settings, shared by the schema and the settings screen. */
+export const SETTING_RANGES = {
+  idleDelaySeconds: { min: 0, max: 3600 },
+  minTurns: { min: 1, max: 50 },
+  turnsBetweenRecaps: { min: 1, max: 50 },
+  historyExchanges: { min: 1, max: 100 },
+} as const;
+type NumericSetting = keyof typeof SETTING_RANGES;
+
+function rangedInt(key: NumericSetting, fallback: number) {
+  const { min, max } = SETTING_RANGES[key];
+  return z.number().int().min(min).max(max).default(fallback);
+}
+
 export const recapSettings = defineSettings({
   id: "recap",
   scope: "host",
@@ -84,11 +101,13 @@ export const recapSettings = defineSettings({
   schema: z.object({
     autoRecap: z.boolean().default(true),
     /** Quiet time after a turn ends before generating; a reply within it skips the recap. */
-    idleDelaySeconds: z.number().int().min(0).max(3600).default(10),
+    idleDelaySeconds: rangedInt("idleDelaySeconds", 10),
     /** User messages required before the first recap of a session. */
-    minTurns: z.number().int().min(1).max(50).default(3),
+    minTurns: rangedInt("minTurns", 3),
     /** Completed turns between automatic recaps; 1 recaps after every turn. */
-    turnsBetweenRecaps: z.number().int().min(1).max(50).default(1),
+    turnsBetweenRecaps: rangedInt("turnsBetweenRecaps", 1),
+    /** Recent exchanges (a user message and the reply) a recap reads, within an ~8K-token budget. */
+    historyExchanges: rangedInt("historyExchanges", 8),
     generator: z.union([GeneratorModeSchema, GeneratorChoiceSchema]).default("auto"),
     includeSubagents: z.boolean().default(false),
     /** Hold a parent's recap while its subagents run (at most 10 minutes), as Claude Code does. */

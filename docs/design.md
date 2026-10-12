@@ -255,7 +255,7 @@ Follows Codex: visible exchanges only.
 
 - An exchange is a `user_message` and everything until the next one. Leading output before the first
   user message is dropped.
-- The last 8 exchanges are kept; per exchange: `User:`, joined `assistant_message` text (providers
+- The last `historyExchanges` exchanges are kept (default 8, as in Codex; 1–100); per exchange: `User:`, joined `assistant_message` text (providers
   split replies across items), and short `Error:` lines. Nothing from `reasoning`, `tool_call`,
   `notification`, `compaction`, or `plugin` items.
 - Hints: agent title as `Overall goal:`; the in-progress (else first unfinished) item of the latest
@@ -263,8 +263,9 @@ Follows Codex: visible exchanges only.
 - Budget: the whole prompt ≤ 32 KiB (≈ 8 K tokens). Over budget: drop the oldest exchanges
   (`[Earlier exchanges omitted]`), then excerpt fields head + tail (`[... excerpted ...]`), always
   keeping the newest answer and a newer unanswered request (Codex). Cuts never split a UTF-8 character.
-- Memory: the scheduler keeps only `trimForRecap(timeline)` (last 8 exchanges + latest todo) and a
-  user-message count, not the whole conversation each `turn_ended` carries.
+- Memory: the scheduler keeps only `trimForRecap(timeline)` (the text, error, compaction, and todo
+  items of the last 100 exchanges, the setting's maximum) and a user-message count, not the whole
+  conversation each `turn_ended` carries.
 
 Tool output is ignored on purpose: it is the largest, noisiest, and most provider-specific part of a
 timeline, and the assistant's messages already state results.
@@ -416,12 +417,17 @@ Settings screen (Settings → Plugins → paseo-recap → Recap; host scope, sha
 | Key | Default | Control |
 |---|---|---|
 | `autoRecap` | `true` | switch |
-| `turnsBetweenRecaps` | `1` | every 1 / 2 / 3 / 5 turns |
-| `idleDelaySeconds` | `10` (0–3600) | immediately, 10 s, 30 s, 1–10 min |
-| `minTurns` | `3` | 1 / 2 / 3 / 5 messages |
+| `turnsBetweenRecaps` | `1` (1–50) | number field |
+| `idleDelaySeconds` | `10` (0–3600) | number field, seconds |
+| `minTurns` | `3` (1–50) | number field |
+| `historyExchanges` | `8` (1–100) | number field |
 | `includeSubagents` | `false` | switch |
 | `waitForSubagents` | `false` | switch |
-| `generator` | `auto` | Same as agent, Metadata model, Claude Haiku, Codex GPT-6-Luna, Codex default, OpenCode default; the hint explains the selected one |
+| `generator` | `auto` | Same as agent, Metadata model, Claude, Codex, OpenCode; for a provider, a model id field (empty = CLI default). The hint explains the selected option |
+
+Number and model fields validate as you type, show the error inline, and save 600 ms after the last
+valid keystroke. Model ids must match `^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$` (≤ 200 chars) because they
+become a CLI argument; the schema enforces the same rule on the daemon.
 
 Paseo's plugin API exposes no i18n, so UI strings are English; recap text follows the user's language.
 
@@ -460,7 +466,7 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
 | Generation fails | Stop after 3 per turn | Retry after 30 s | Debug log | Retry after 30 s, stop after 3 per turn |
 | No model available / not logged in | — | — | — | Clear message on the card; no retries; CLI cooled down 10 min |
 | Many agents finish at once | n/a (one session) | n/a | n/a | Max 2 concurrent CLIs, queue honors aborts |
-| Very long session | Cache-backed full context | Last 8 exchanges, 8 K tokens | Full context | Last 8 exchanges, 32 KiB; only that is kept in memory |
+| Very long session | Cache-backed full context | Last 8 exchanges, 8 K tokens | Full context | Last 8 exchanges by default (1–100), 32 KiB |
 | Huge single message | — | Head + tail excerpt | — | Head + tail excerpt, UTF-8 safe |
 | Subagents | — | — | — | Not recapped by default |
 | Turns without a new user message | Counts user messages | Counts completed turns | — | Counts completed turns |
@@ -490,7 +496,7 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
 
 ## 7. Testing
 
-- Unit (vitest, 75 tests): history grouping, budgets, excerpting, trimming, todo/goal hints;
+- Unit (vitest, 77 tests): history grouping, budgets, excerpting, trimming, todo/goal hints;
   prompt rendering and output parsing; candidate ordering, CLI arguments, OpenCode event parsing and
   session cleanup, queueing, failure classification, process abort/timeout; usage guard; store
   persistence, history, pruning; scheduler state machine with fake timers for every row in §5.12

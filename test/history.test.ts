@@ -6,7 +6,7 @@ import {
   collectExchanges,
   excerptBytes,
   formatHistory,
-  HISTORY_MAX_EXCHANGES,
+  HISTORY_EXCHANGES_LIMIT,
   isCompacting,
   latestActiveTask,
   trimForRecap,
@@ -103,30 +103,37 @@ describe("excerptBytes", () => {
 });
 
 describe("buildRecapInput", () => {
-  it("counts user turns across the whole timeline and keeps the last eight exchanges", () => {
+  it("counts user turns across the whole timeline and keeps the requested number of exchanges", () => {
     const timeline = Array.from({ length: 10 }, (_, index) => [
       user(`request ${index}`),
       assistant(`reply ${index}`),
     ]).flat();
-    const input = buildRecapInput(timeline, 10_000);
+    const input = buildRecapInput(timeline, 10_000, 8);
     expect(input.userTurns).toBe(10);
     expect(input.history).not.toContain("request 1\n");
     expect(input.history).toContain("request 2");
     expect(input.history).toContain("reply 9");
+    expect(buildRecapInput(timeline, 10_000, 3).history).not.toContain("request 6");
+    expect(buildRecapInput(timeline, 10_000, 20).history).toContain("request 0");
   });
 });
 
 describe("trimForRecap", () => {
-  it("keeps the last exchanges and carries the latest todo forward", () => {
+  it("keeps text items of the last exchanges and carries the latest todo forward", () => {
     const todo: AgentTimelineItem = { type: "todo", items: [{ text: "ship", completed: false }] };
     const timeline: AgentTimelineItem[] = [
       todo,
-      ...Array.from({ length: 12 }, (_, index) => [user(`q${index}`), assistant(`a${index}`)]).flat(),
+      ...Array.from({ length: HISTORY_EXCHANGES_LIMIT + 5 }, (_, index): AgentTimelineItem[] => [
+        user(`q${index}`),
+        { type: "reasoning", text: `thinking ${index}` },
+        assistant(`a${index}`),
+      ]).flat(),
     ];
     const trimmed = trimForRecap(timeline);
     expect(trimmed[0]).toBe(todo);
-    expect(trimmed.filter((item) => item.type === "user_message")).toHaveLength(HISTORY_MAX_EXCHANGES);
-    expect(buildRecapInput(trimmed, 10_000).history).toBe(buildRecapInput(timeline, 10_000).history);
+    expect(trimmed.filter((item) => item.type === "user_message")).toHaveLength(HISTORY_EXCHANGES_LIMIT);
+    expect(trimmed.some((item) => item.type === "reasoning")).toBe(false);
+    expect(buildRecapInput(trimmed, 10_000, 8).history).toBe(buildRecapInput(timeline, 10_000, 8).history);
     expect(latestActiveTask(trimmed)).toBe("ship");
   });
 
