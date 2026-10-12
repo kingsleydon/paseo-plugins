@@ -3,15 +3,12 @@ import { z } from "zod";
 
 // Providers ------------------------------------------------------------------------------------
 
-/**
- * CLIs that can write recaps, each with the small, fast model it uses by default. OpenCode model
- * ids depend on the user's own providers, so it uses its configured default.
- */
+/** Providers whose CLI can write recaps. Models come from what Paseo reports as installed. */
 export const RECAP_PROVIDERS = {
-  claude: { label: "Claude", defaultModel: "haiku" },
-  codex: { label: "Codex", defaultModel: "gpt-6-luna" },
-  opencode: { label: "OpenCode", defaultModel: null },
-} as const satisfies Record<string, { label: string; defaultModel: string | null }>;
+  claude: { label: "Claude" },
+  codex: { label: "Codex" },
+  opencode: { label: "OpenCode" },
+} as const satisfies Record<string, { label: string }>;
 export type RecapProvider = keyof typeof RECAP_PROVIDERS;
 
 export function isRecapProvider(value: string): value is RecapProvider {

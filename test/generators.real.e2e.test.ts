@@ -50,7 +50,7 @@ describe.skipIf(!enabled)("real recap generation", () => {
       const started = Date.now();
       const recap = await generator.generate(
         renderPrompt(input.history, context),
-        resolveCandidates(choice, {}),
+        resolveCandidates(choice, { config: {}, providers: [] }),
         new AbortController().signal,
       );
       console.log(choice.provider, `${Date.now() - started} ms`, JSON.stringify(recap));

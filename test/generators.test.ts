@@ -5,6 +5,8 @@ import { MAX_CONCURRENT_GENERATIONS, RecapGenerator } from "../server/generators
 import { resolveCandidates } from "../server/models";
 import type { RunProcess } from "../server/process";
 
+const NO_PROVIDERS = { config: {}, providers: [] };
+
 describe("RecapGenerator", () => {
   it("falls back to the next candidate and cools down unavailable ones", async () => {
     const calls: string[] = [];
@@ -20,7 +22,7 @@ describe("RecapGenerator", () => {
       now: () => 0,
       log: () => undefined,
     });
-    const candidates = resolveCandidates({ provider: "claude" }, {});
+    const candidates = resolveCandidates({ provider: "claude" }, NO_PROVIDERS);
     // Only unavailable CLIs ran: the user has to fix their setup.
     await expect(generator.generate("p", candidates, new AbortController().signal)).rejects.toBeInstanceOf(
       NoGeneratorError,
@@ -54,7 +56,7 @@ describe("RecapGenerator queue and cleanup", () => {
       return { code: 0, stdout: ok, stderr: "" };
     };
     const generator = new RecapGenerator(deps(fake));
-    const candidates = resolveCandidates({ provider: "claude" }, {});
+    const candidates = resolveCandidates({ provider: "claude" }, NO_PROVIDERS);
     await Promise.all(
       Array.from({ length: 5 }, () => generator.generate("p", candidates, new AbortController().signal)),
     );
@@ -68,7 +70,7 @@ describe("RecapGenerator queue and cleanup", () => {
         releases.push(() => resolve({ code: 0, stdout: ok, stderr: "" }));
       });
     const generator = new RecapGenerator(deps(fake));
-    const candidates = resolveCandidates({ provider: "claude" }, {});
+    const candidates = resolveCandidates({ provider: "claude" }, NO_PROVIDERS);
     const busy = Array.from({ length: MAX_CONCURRENT_GENERATIONS }, () =>
       generator.generate("p", candidates, new AbortController().signal),
     );
@@ -93,7 +95,7 @@ describe("RecapGenerator queue and cleanup", () => {
     };
     const generator = new RecapGenerator(deps(fake));
     await expect(
-      generator.generate("p", resolveCandidates({ provider: "opencode" }, {}), new AbortController().signal),
+      generator.generate("p", resolveCandidates({ provider: "opencode" }, NO_PROVIDERS), new AbortController().signal),
     ).rejects.toThrow("invalid recap");
     expect(calls.at(-1)).toEqual(["session", "delete", "ses_9"]);
   });

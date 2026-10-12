@@ -16,9 +16,10 @@ OpenCode, OMP, Pi, and custom agents.
 - **Recap pill on every agent.** Shows the latest recap's age; tap it to read, regenerate, or see
   earlier recaps, or to generate one for an agent that has none yet. `/paseo-recap` does the same
   (Claude agents keep Claude Code's own `/recap`).
-- **Any model.** By default each agent is recapped by its own provider (Claude by Claude Haiku,
-  Codex by GPT-6-Luna). Choose Paseo's metadata model or any Claude, Codex, or OpenCode model
-  instead; the settings screen shows exactly which models will run.
+- **Picks a model like Paseo does.** Recaps use the same order as Paseo's metadata generation: your
+  metadata generation models, then Paseo's small models that are installed, such as Claude Haiku.
+  Never the agent's large model. Or choose any Claude, Codex, or OpenCode model; the settings screen
+  shows exactly which models will run.
 - **Quiet and cheap.** About 40 words, from recent text only. Skips canceled turns, pending
   permissions, context compaction, and providers near their usage limit. ~3 s and ~$0.002 per recap
   with Claude Haiku.
@@ -87,8 +88,9 @@ Code, Codex, and OMP.
 
 - Recaps send recent conversation text to one model at a time, using that CLI's login. With
   **Same as agent** or **Metadata model**, a model that is unavailable or fails is followed by the
-  next: the agent's own provider, Paseo's metadata generation models, then Claude Haiku and Codex
-  GPT-6-Luna, so any of them can receive that text. A specific provider gets recaps only for itself.
+  next: the agent's own provider (when it has a small model), Paseo's metadata generation models,
+  then Paseo's installed small models, so any of them can receive that text. A specific provider
+  gets recaps only for itself.
 - Claude runs with no tools, MCP servers, or settings. Codex runs in a read-only sandbox with your
   own Codex configuration, including any MCP servers you set up there. OpenCode uses its read-only
   `plan` agent, which rejects permission requests.

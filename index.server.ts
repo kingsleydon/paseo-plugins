@@ -14,7 +14,7 @@ import {
 } from "./shared/recap";
 import { errorMessage, RecapSkippedError } from "./server/errors";
 import { RecapGenerator } from "./server/generators";
-import { describeModelPlan, resolveCandidates, type GeneratorConfig } from "./server/models";
+import { describeModelPlan, resolveCandidates, type GeneratorInputs } from "./server/models";
 import type { PaseoApi } from "./server/paseo-types";
 import { runProcess } from "./server/process";
 import { RecapScheduler } from "./server/scheduler";
@@ -50,9 +50,12 @@ export default function contribute(server: PluginServerContext) {
     return paseo;
   };
 
-  const readGeneratorConfig = async (api: PaseoApi): Promise<GeneratorConfig> => {
-    const { config } = await api.config.get();
-    return { metadataGeneration: config.metadataGeneration, providers: config.providers };
+  const readGeneratorInputs = async (api: PaseoApi): Promise<GeneratorInputs> => {
+    const [{ config }, { entries }] = await Promise.all([api.config.get(), api.providers.snapshot()]);
+    return {
+      config: { metadataGeneration: config.metadataGeneration, providers: config.providers },
+      providers: entries,
+    };
   };
 
   const readSettings = async (): Promise<RecapSettings> => {
@@ -67,8 +70,8 @@ export default function contribute(server: PluginServerContext) {
     readSettings,
     log,
     async generate(prompt, signal, { agentProvider, trigger }) {
-      const [config, current] = await Promise.all([readGeneratorConfig(requirePaseo()), readSettings()]);
-      let candidates = resolveCandidates(current.generator, config, agentProvider);
+      const [inputs, current] = await Promise.all([readGeneratorInputs(requirePaseo()), readSettings()]);
+      let candidates = resolveCandidates(current.generator, inputs, agentProvider);
       if (trigger === "auto" && candidates.length > 0) {
         const nearLimit = await usage.nearLimit();
         const allowed = candidates.filter((candidate) => !nearLimit.has(candidate.provider));
@@ -146,7 +149,7 @@ export default function contribute(server: PluginServerContext) {
   });
   server.handle(recapModelPlanRpc, async ({ generator }, context) => {
     paseo = context.paseo;
-    return describeModelPlan(generator, await readGeneratorConfig(context.paseo));
+    return describeModelPlan(generator, await readGeneratorInputs(context.paseo));
   });
   server.handle(recapRegenerateRpc, async ({ agentId }, context) => {
     paseo = context.paseo;

@@ -1,68 +1,68 @@
 import { describe, expect, it } from "vitest";
-import { describeModelPlan, resolveCandidates } from "../server/models";
+import { describeModelPlan, resolveCandidates, type GeneratorInputs } from "../server/models";
+
+const model = (id: string, label = id, isDefault = false) => ({ id, label, isDefault });
+
+/** Shaped like a real snapshot: Claude has Haiku, Codex has no model from Paseo's small list. */
+const providers: GeneratorInputs["providers"] = [
+  { provider: "claude", enabled: true, models: [model("claude-opus-5-5", "Opus 5.5", true), model("claude-haiku-4-5", "Haiku 4.5")] },
+  { provider: "codex", enabled: true, models: [model("gpt-6.1-sol", "GPT-6.1-Sol", true), model("gpt-6-luna", "GPT-6-Luna")] },
+  { provider: "opencode", enabled: true, models: [model("openrouter/minimax/minimax-m3", "MiniMax M3")] },
+  { provider: "pi", enabled: false, models: [model("pi-mini")] },
+];
+const inputs = (config: GeneratorInputs["config"] = {}, list = providers): GeneratorInputs => ({ config, providers: list });
+const refs = (candidates: ReturnType<typeof resolveCandidates>) => candidates.map((c) => [c.provider, c.model]);
 
 describe("resolveCandidates", () => {
-  const config = {
-    metadataGeneration: {
-      providers: [
-        { provider: "pi" },
-        { provider: "codex", model: "gpt-5.5" },
-        { provider: "claude", model: "haiku" },
-      ],
-    },
-    providers: { claude: { command: ["/opt/claude", "--flag"] } },
-  };
-  const summarize = (candidates: ReturnType<typeof resolveCandidates>) =>
-    candidates.map((c) => [c.provider, c.model, c.command]);
-
-  it("puts the agent's own provider first, then metadata order and defaults", () => {
-    expect(summarize(resolveCandidates("auto", config, "codex"))).toEqual([
-      ["codex", "gpt-6-luna", ["codex"]],
-      ["codex", "gpt-5.5", ["codex"]],
-      ["claude", "haiku", ["/opt/claude", "--flag"]],
+  it("follows Paseo's metadata order: configured models, then installed small models in Paseo's order", () => {
+    const config = { metadataGeneration: { providers: [{ provider: "codex" }, { provider: "claude", model: "sonnet" }] } };
+    expect(refs(resolveCandidates("metadata", inputs(config)))).toEqual([
+      ["codex", "gpt-6.1-sol"],
+      ["claude", "sonnet"],
+      ["claude", "claude-haiku-4-5"],
+      ["opencode", "openrouter/minimax/minimax-m3"],
     ]);
-    expect(summarize(resolveCandidates("auto", {}, "opencode"))[0]).toEqual(["opencode", null, ["opencode"]]);
   });
 
-  it("describes the models each setting resolves to", () => {
-    expect(describeModelPlan("auto", config)).toEqual({
+  it("puts the agent's provider first only when it has a small model, never its large model", () => {
+    expect(refs(resolveCandidates("auto", inputs(), "claude"))[0]).toEqual(["claude", "claude-haiku-4-5"]);
+    expect(refs(resolveCandidates("auto", inputs(), "codex"))).toEqual(refs(resolveCandidates("metadata", inputs())));
+  });
+
+  it("skips disabled providers and ones it cannot run, and keeps configured CLI commands", () => {
+    const config = {
+      metadataGeneration: { providers: [{ provider: "pi" }, { provider: "omp" }] },
+      providers: { claude: { command: ["/opt/claude", "--flag"] } },
+    };
+    expect(resolveCandidates("metadata", inputs(config))[0]).toEqual({
+      provider: "claude",
+      model: "claude-haiku-4-5",
+      command: ["/opt/claude", "--flag"],
+    });
+  });
+
+  it("uses an explicit provider's model, else its small model, else the CLI default", () => {
+    expect(refs(resolveCandidates({ provider: "codex", model: "gpt-6-luna" }, inputs()))).toEqual([["codex", "gpt-6-luna"]]);
+    expect(refs(resolveCandidates({ provider: "claude" }, inputs()))).toEqual([["claude", "claude-haiku-4-5"]]);
+    expect(refs(resolveCandidates({ provider: "codex" }, inputs()))).toEqual([["codex", null]]);
+  });
+});
+
+describe("describeModelPlan", () => {
+  it("lists each provider's first choice and the shared fallback order", () => {
+    expect(describeModelPlan("auto", inputs())).toEqual({
       perProvider: [
-        { provider: "claude", model: "haiku" },
-        { provider: "codex", model: "gpt-6-luna" },
-        { provider: "opencode", model: null },
+        { provider: "claude", model: "claude-haiku-4-5" },
+        { provider: "opencode", model: "openrouter/minimax/minimax-m3" },
       ],
       fallback: [
-        { provider: "codex", model: "gpt-5.5" },
-        { provider: "claude", model: "haiku" },
-        { provider: "codex", model: "gpt-6-luna" },
+        { provider: "claude", model: "claude-haiku-4-5" },
+        { provider: "opencode", model: "openrouter/minimax/minimax-m3" },
       ],
     });
-    expect(describeModelPlan({ provider: "claude", model: "sonnet" }, config)).toEqual({
+    expect(describeModelPlan({ provider: "claude", model: "sonnet" }, inputs())).toEqual({
       perProvider: [],
       fallback: [{ provider: "claude", model: "sonnet" }],
     });
-  });
-
-  it("falls back to metadata order for unsupported agent providers", () => {
-    expect(summarize(resolveCandidates("auto", config, "omp"))).toEqual(
-      summarize(resolveCandidates("metadata", config)),
-    );
-  });
-
-  it("uses metadata order only in metadata mode, skipping unsupported providers", () => {
-    expect(summarize(resolveCandidates("metadata", config, "codex"))).toEqual([
-      ["codex", "gpt-5.5", ["codex"]],
-      ["claude", "haiku", ["/opt/claude", "--flag"]],
-      ["codex", "gpt-6-luna", ["codex"]],
-    ]);
-  });
-
-  it("drops disabled providers and honors an explicit choice", () => {
-    expect(resolveCandidates("auto", { providers: { claude: { enabled: false } } })).toEqual([
-      { provider: "codex", model: "gpt-6-luna", command: ["codex"] },
-    ]);
-    expect(resolveCandidates({ provider: "claude" }, {}, "codex")).toEqual([
-      { provider: "claude", model: null, command: ["claude"] },
-    ]);
   });
 });

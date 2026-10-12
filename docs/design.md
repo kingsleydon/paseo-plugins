@@ -311,14 +311,21 @@ Candidate order:
 
 | `generator` setting | Order |
 |---|---|
-| `auto` (default) | Agent's own provider with its recap model → `metadataGeneration.providers` → `claude/haiku` → `codex/gpt-6-luna` |
-| `metadata` | `metadataGeneration.providers` → defaults |
-| `{ provider, model }` | That one only |
+| `auto` (default) | Agent's own provider's small model, if installed → `metadata` order |
+| `metadata` | `metadataGeneration.providers` → Paseo's small models that are installed |
+| `{ provider, model? }` | That one only; without a model, its small model, else the CLI default |
 
-`auto` follows prior art — Claude Code, Codex, and OMP all recap with the session's own provider — and
-keeps a Codex agent's conversation with OpenAI rather than sending it to Anthropic, and vice versa.
-Agents on providers without an adapter (OMP, Pi, custom) use the metadata order. Providers disabled
-in Paseo config are skipped; a provider's configured `command` is honored.
+The `metadata` order mirrors Paseo's own model choice for metadata generation
+(`resolveStructuredGenerationProviders`): configured `metadataGeneration.providers` (a provider without
+a model uses its default model), then `DEFAULT_STRUCTURED_GENERATION_PROVIDERS` (`haiku`,
+`gpt-5.4-mini`, `minimax-m3`, `nemotron-3-super`), each matched by id or label against the installed
+models in `paseo.providers.snapshot()`. Plugins cannot call that function or import the list, so the
+list is mirrored. Two differences: only providers with a CLI adapter (Claude, Codex, OpenCode) are
+used, and the agent's current model is never a last resort, so a recap does not run on a large model.
+
+`auto` follows prior art (Claude Code, Codex, and OMP all recap with the session's own provider) and
+keeps a conversation with the vendor already in use when that vendor has a small model. Providers
+disabled or missing in the snapshot are skipped; a provider's configured `command` is honored.
 
 Adapters (verified against claude 2.1.292, codex-cli 0.160.0, opencode 1.18.30 on 2026-10-07):
 
@@ -426,7 +433,7 @@ Settings screen (Settings → Plugins → paseo-recap → Recap; host scope, sha
 | `historyExchanges` | `8` (1–100) | number field |
 | `includeSubagents` | `false` | switch |
 | `waitForSubagents` | `false` | switch |
-| `generator` | `auto` | Same as agent, Metadata model, Claude, Codex, OpenCode; for a provider, a model id field (empty = CLI default). The hint explains the selected option, and a **Will use** row names the exact models from the daemon config (e.g. "Claude agents: Claude haiku. … Other agents, or if that fails: Claude haiku, then Codex gpt-6-luna.") |
+| `generator` | `auto` | Same as agent, Metadata model, Claude, Codex, OpenCode; for a provider, a model id field (empty = its small model, else the CLI default). The hint explains the selected option, and a **Will use** row names the exact models from the daemon config (e.g. "Claude agents: Claude haiku. … Other agents, or if that fails: Claude haiku, then Codex gpt-6-luna.") |
 
 Number and model fields validate as you type, show the error inline, and save 600 ms after the last
 valid keystroke. Model ids must match `^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$` (≤ 200 chars) because they
@@ -443,9 +450,9 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
 
 ### 5.11 Security and privacy
 
-- `auto` keeps each conversation with the agent's own provider when an adapter exists; otherwise the
-  metadata-generation model receives it — the trust boundary Paseo already uses for titles and commit
-  messages.
+- `auto` keeps each conversation with the agent's own provider when it has a small model; otherwise
+  the models Paseo would use for metadata generation receive it, the trust boundary Paseo already
+  uses for titles and commit messages.
 - Only user and assistant text is sent; tool output (file contents, command output) is not.
 - Prompt injection: the conversation is framed as data, generators have no tools (Claude `--tools ""`,
   Codex read-only sandbox with the user's own Codex configuration, OpenCode `plan` agent with

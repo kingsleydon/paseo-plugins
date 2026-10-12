@@ -40,9 +40,9 @@ const MODEL_SOURCE_OPTIONS: ReadonlyArray<{ label: string; value: ModelSource }>
 ];
 
 const MODE_HINTS: Record<GeneratorMode, string> = {
-  auto: "Recaps use the agent's own provider, so the conversation stays with the vendor you chose. If it is unavailable, the Metadata generation model is used.",
+  auto: "Recaps use the agent's own provider when it has a small model, so the conversation stays with the vendor you chose. Otherwise they pick a model the way Paseo's Metadata generation does.",
   metadata:
-    "Recaps use the model from Settings → Metadata generation, the one Paseo uses for titles and commit messages.",
+    "Recaps pick a model the way Paseo's Metadata generation does: the models set there, then Paseo's small models that are installed.",
 };
 const CLI_HINT = " Runs the provider's CLI on this computer with your existing login.";
 
@@ -56,11 +56,9 @@ function modelSource(generator: RecapSettings["generator"]): ModelSource {
   return isRecapProvider(generator.provider) ? generator.provider : "auto";
 }
 
-/** Switching to a provider starts from its small, fast recap model, or the CLI default. */
+/** A provider without a model name uses its small model from Paseo's list, or the CLI default. */
 function generatorFor(source: ModelSource): GeneratorMode | GeneratorChoice {
-  if (!isRecapProvider(source)) return source;
-  const model = RECAP_PROVIDERS[source].defaultModel;
-  return model ? { provider: source, model } : { provider: source };
+  return isRecapProvider(source) ? { provider: source } : source;
 }
 
 /**
@@ -253,9 +251,9 @@ function RecapSettingsForm({ settings }: { settings: ReadySettings }) {
               // Remount per provider so the field shows the newly selected provider's model.
               key={source}
               label="Model name"
-              hint="Any model id the CLI accepts, such as haiku or gpt-6-luna. Leave empty for the CLI's default."
+              hint="Any model id the CLI accepts. Leave empty for the provider's small model from Paseo's list, or the CLI's default."
               initialValue={model}
-              placeholder="CLI default"
+              placeholder="Small model"
               disabled={false}
               parse={(text) => {
                 const trimmed = text.trim();

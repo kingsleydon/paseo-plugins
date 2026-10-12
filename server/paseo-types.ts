@@ -5,3 +5,4 @@ import type { PluginHookContext, PluginLifecycleEvents } from "@getpaseo/plugin/
 
 export type PaseoApi = PluginHookContext["paseo"];
 export type AgentTimelineItem = PluginLifecycleEvents["agent.turn_ended"]["timeline"][number];
+export type ProviderSnapshotEntry = Awaited<ReturnType<PaseoApi["providers"]["snapshot"]>>["entries"][number];

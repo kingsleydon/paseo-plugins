@@ -22,13 +22,13 @@ Open **Settings → Plugins → paseo-recap → Recap**.
 - **Every N turns**, **Wait after a turn**, and **Start after** control when automatic recaps run.
 - **Recent exchanges to read.** How many of your messages and the replies a recap reads, from 1 to 100. The default is 8.
 - **Recap subagents** and **Wait for subagents.** Recap agents started by other agents, and hold a parent's recap while its subagents run, for up to 10 minutes.
-- **Recap model.** By default each agent is recapped by its own provider: Claude Haiku for Claude agents and GPT-6-Luna for Codex agents. You can choose Paseo's metadata generation model instead, or any Claude, Codex, or OpenCode model by name. The settings page lists the exact models that will run.
+- **Recap model.** Recaps pick a model the way Paseo's metadata generation does: the models set in Paseo's metadata generation settings, then Paseo's small models that are installed, such as Claude Haiku. By default an agent whose own provider has one of those small models is recapped by it first. You can also choose any Claude, Codex, or OpenCode model by name. The settings page lists the exact models that will run.
 
 ## Data and permissions
 
 A recap reads only the text of recent user and assistant messages, plus the agent's title and its current to-do item. It never reads tool output, file contents, or reasoning. That text goes to one model at a time, through its command line tool.
 
-With **Same as agent** or **Metadata model**, a model that is unavailable or fails is followed by the next one: the agent's own provider first (for Same as agent), then the models in Paseo's metadata generation settings, then Claude Haiku, then Codex GPT-6-Luna. Any of those providers can therefore receive the conversation text. Choosing Claude, Codex, or OpenCode with a model name sends recaps only to that provider, with no fallback.
+With **Same as agent** or **Metadata model**, a model that is unavailable or fails is followed by the next one: the agent's own provider first (for Same as agent, when it has a small model), then the models in Paseo's metadata generation settings, then Paseo's small models that are installed (Claude Haiku, GPT-5.4 mini, MiniMax M3, Nemotron 3 Super). Any of those providers can therefore receive the conversation text. Unlike Paseo's own metadata generation, a recap never falls back to the agent's large model. Choosing Claude, Codex, or OpenCode sends recaps only to that provider, with no fallback.
 
 Claude runs with no tools, MCP servers, or user settings. Codex runs in a read-only sandbox with your own Codex configuration, which includes any MCP servers you have set up there. OpenCode runs its read-only plan agent. Each run uses a temporary folder. Claude and Codex runs are not saved as sessions. OpenCode always saves one, and the plugin deletes it right after the run; if that deletion fails, the session stays in OpenCode.
 
