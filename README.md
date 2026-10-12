@@ -119,6 +119,20 @@ paseo plugin logs paseo-recap
 | `client/` | Recap line, pill and card, settings screen |
 | `shared/recap.ts` | Providers, settings schema, recap types, RPC contracts |
 
+## Releasing
+
+Releases publish to npm from GitHub Actions with [trusted publishing](https://docs.npmjs.com/trusted-publishers)
+(OIDC), so no npm token is stored anywhere. Bump `version` in `package.json` in a PR, merge it,
+then tag the merged commit:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+[`.github/workflows/publish.yml`](.github/workflows/publish.yml) checks that the tag matches the
+version, runs the type check and tests, and publishes with provenance. Once the paseo.sh listing
+uses the npm package as its source, the registry proposes each new version automatically.
+
 ## License
 
 [MIT](LICENSE)
