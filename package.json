@@ -1,6 +1,6 @@
 {
   "name": "paseo-recap",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Provider-agnostic agent recaps for Paseo, like Claude Code's session recap.",
   "license": "MIT",
   "files": [
