@@ -107,3 +107,7 @@ paseo plugin logs paseo-recap
 | `server/store.ts`, `server/usage.ts` | Recap storage, usage-limit guard |
 | `client/` | Recap line, pill and card, settings screen |
 | `shared/recap.ts` | Providers, settings schema, recap types, RPC contracts |
+
+## License
+
+[MIT](LICENSE)

@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "description": "Provider-agnostic agent recaps for Paseo, like Claude Code's session recap.",
+  "license": "MIT",
   "files": [
     "paseo-plugin.json",
     "index.client.ts",
