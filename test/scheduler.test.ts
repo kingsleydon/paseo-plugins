@@ -381,9 +381,8 @@ describe("RecapScheduler", () => {
     await endTurn(scheduler, agent("p"), turns(1));
     await vi.advanceTimersByTimeAsync(60_000);
     expect(generate).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(CHILD_BLOCK_MAX_MS);
-    await endTurn(scheduler, agent("p"), turns(2));
-    await vi.advanceTimersByTimeAsync(10_000);
+    // No further events: the parent is recapped once the block expires.
+    await vi.advanceTimersByTimeAsync(CHILD_BLOCK_MAX_MS - 60_000 + 10_000);
     expect(generate).toHaveBeenCalledOnce();
   });
 

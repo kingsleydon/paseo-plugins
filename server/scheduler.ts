@@ -234,7 +234,10 @@ export class RecapScheduler {
 
   async #maybeSchedule(entry: AgentEntry, delayMs?: number): Promise<void> {
     const settings = await this.#deps.readSettings();
-    if (!this.#eligible(entry, settings)) return;
+    if (!this.#eligible(entry, settings)) {
+      this.#recheckAfterChildBlock(entry, settings);
+      return;
+    }
     this.#clearTimer(entry);
     const revision = entry.revision;
     entry.state = "waiting";
@@ -250,9 +253,28 @@ export class RecapScheduler {
     const settings = await this.#deps.readSettings();
     if (!this.#eligible(entry, settings)) {
       if (entry.state === "waiting") entry.state = entry.error ? "error" : "idle";
+      this.#recheckAfterChildBlock(entry, settings);
       return;
     }
     await this.#run(entry, "auto");
+  }
+
+  /**
+   * A child that never reports its turn end blocks its parent for at most CHILD_BLOCK_MAX_MS. No
+   * event marks that deadline, so check again when it passes.
+   */
+  #recheckAfterChildBlock(entry: AgentEntry, settings: RecapSettings): void {
+    if (!settings.waitForSubagents || entry.timer || !this.#hasBlockingChild(entry)) return;
+    const now = Date.now();
+    let blockEndsAt = now;
+    for (const childId of entry.runningChildren) {
+      const since = this.#entries.get(childId)?.runningSince;
+      if (since != null) blockEndsAt = Math.max(blockEndsAt, since + CHILD_BLOCK_MAX_MS);
+    }
+    entry.timer = setTimeout(() => {
+      entry.timer = null;
+      void this.#maybeSchedule(entry);
+    }, blockEndsAt - now);
   }
 
   #eligible(entry: AgentEntry, settings: RecapSettings): boolean {

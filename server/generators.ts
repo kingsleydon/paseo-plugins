@@ -10,6 +10,36 @@ export const MAX_CONCURRENT_GENERATIONS = 2;
 const UNAVAILABLE_COOLDOWN_MS = 10 * 60_000;
 const OUTPUT_LIMIT_BYTES = 1024 * 1024;
 const CLEANUP_TIMEOUT_MS = 15_000;
+const PROBE_TIMEOUT_MS = 15_000;
+
+/**
+ * Codex features that give a turn tools. A recap reads untrusted conversation text, so none may
+ * run. Only names the installed Codex lists are passed: it rejects unknown feature flags.
+ */
+const CODEX_TOOL_FEATURES: ReadonlySet<string> = new Set([
+  "apps",
+  "browser_use",
+  "browser_use_external",
+  "browser_use_full_cdp_access",
+  "code_mode_host",
+  "computer_use",
+  "goals",
+  "image_generation",
+  "in_app_browser",
+  "memories",
+  "multi_agent",
+  "multi_agent_v2",
+  "plugins",
+  "remote_plugin",
+  "shell_tool",
+  "skill_mcp_dependency_install",
+  "sleep_tool",
+  "standalone_web_search",
+  "tool_suggest",
+  "unified_exec",
+  "view_image",
+]);
+const CODEX_MCP_NAME = /^[A-Za-z0-9_-]+$/;
 
 const SUPPORTED_PROVIDERS = ["claude", "codex", "opencode"] as const;
 type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number];
@@ -266,7 +296,8 @@ export class RecapGenerator {
           const schemaPath = join(workdir, "schema.json");
           const outputPath = join(workdir, "last-message.json");
           await writeFile(schemaPath, JSON.stringify(RECAP_JSON_SCHEMA));
-          const result = await run(codexArgs(candidate.model, schemaPath, outputPath));
+          const isolation = await this.#codexIsolation(candidate, workdir, env, signal);
+          const result = await run(codexArgs(candidate.model, schemaPath, outputPath, isolation));
           return await parseCodexResult(result, outputPath);
         }
         case "opencode": {
@@ -280,6 +311,33 @@ export class RecapGenerator {
     } finally {
       await rm(workdir, { recursive: true, force: true }).catch(() => undefined);
     }
+  }
+
+  /**
+   * Arguments that switch off every MCP server and tool feature of the user's Codex while keeping
+   * the rest of its config (auth, model providers). Config overrides merge rather than replace, so
+   * each server is disabled by name. Fails closed: if Codex cannot be inspected, it is not used.
+   */
+  async #codexIsolation(
+    candidate: GeneratorCandidate,
+    workdir: string,
+    env: NodeJS.ProcessEnv,
+    signal: AbortSignal,
+  ): Promise<string[]> {
+    const [executable, ...leading] = candidate.command;
+    const probe = (args: readonly string[]) =>
+      this.#deps.runProcess(executable, [...leading, ...args], {
+        stdin: "",
+        cwd: workdir,
+        env,
+        signal,
+        timeoutMs: PROBE_TIMEOUT_MS,
+      });
+    const [servers, features] = await Promise.all([probe(["mcp", "list", "--json"]), probe(["features", "list"])]);
+    if (servers.code !== 0 || features.code !== 0) {
+      throw new GeneratorUnavailableError("could not inspect codex MCP servers and features");
+    }
+    return codexIsolationArgs(parseCodexMcpNames(servers.stdout), parseCodexFeatures(features.stdout));
   }
 
   async #deleteOpencodeSession(
@@ -325,7 +383,49 @@ export function claudeArgs(model: string | null): string[] {
   ];
 }
 
-export function codexArgs(model: string | null, schemaPath: string, outputPath: string): string[] {
+/** Server names from `codex mcp list --json`. Throws on anything it cannot safely disable. */
+export function parseCodexMcpNames(stdout: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new GeneratorUnavailableError("unexpected codex mcp list output");
+  }
+  if (!Array.isArray(parsed)) throw new GeneratorUnavailableError("unexpected codex mcp list output");
+  return parsed.map((server: unknown) => {
+    const name = asRecord(server)?.name;
+    if (typeof name !== "string" || !CODEX_MCP_NAME.test(name)) {
+      throw new GeneratorUnavailableError("codex MCP server name cannot be disabled safely");
+    }
+    return name;
+  });
+}
+
+/** Feature names from `codex features list` (name, stage, state columns), skipping removed ones. */
+export function parseCodexFeatures(stdout: string): Set<string> {
+  const names = new Set<string>();
+  for (const line of stdout.split("\n")) {
+    const [name, stage] = line.trim().split(/\s+/);
+    if (name && stage && stage !== "removed") names.add(name);
+  }
+  return names;
+}
+
+export function codexIsolationArgs(mcpServers: readonly string[], features: ReadonlySet<string>): string[] {
+  return [
+    ...mcpServers.flatMap((name) => ["--config", `mcp_servers.${name}.enabled=false`]),
+    ...[...CODEX_TOOL_FEATURES].filter((feature) => features.has(feature)).flatMap((feature) => ["--disable", feature]),
+    "--config",
+    'web_search="disabled"',
+  ];
+}
+
+export function codexArgs(
+  model: string | null,
+  schemaPath: string,
+  outputPath: string,
+  isolation: readonly string[],
+): string[] {
   return [
     "exec",
     "--ephemeral",
@@ -344,6 +444,7 @@ export function codexArgs(model: string | null, schemaPath: string, outputPath: 
     "notify=[]",
     "--config",
     'model_reasoning_effort="low"',
+    ...isolation,
     ...(model ? ["--model", model] : []),
     "-",
   ];

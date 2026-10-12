@@ -1,7 +1,8 @@
 # paseo-recap
 
 A [Paseo](https://github.com/getpaseo/paseo) plugin that shows a short "where things stand" recap
-for every agent — goal, current state, next action — pinned outside the conversation timeline.
+for every agent — goal, current state, next action — as a muted line in the conversation, like
+Claude Code's session recap, plus a composer pill.
 Provider-agnostic: works with Claude, Codex, OMP, Pi, OpenCode, and custom providers.
 
 See [docs/design.md](docs/design.md) for the design and a comparison with Claude Code, Codex, OMP,
@@ -47,7 +48,7 @@ Generation runs a local CLI with your existing login. By default the agent's own
 | Provider | Invocation |
 |---|---|
 | `claude` | `claude -p --json-schema … --tools "" --no-session-persistence --setting-sources ""`, thinking disabled |
-| `codex` | `codex exec --ephemeral --sandbox read-only --output-schema … --disable hooks`, low reasoning effort |
+| `codex` | `codex exec --ephemeral --sandbox read-only --output-schema … --disable hooks`, low reasoning effort, with every configured MCP server and tool feature (shell, exec, browser, computer use, plugins, agents, web search) turned off |
 | `opencode` | `opencode run --pure --agent plan --format json`, session deleted afterwards |
 
 Each call runs in a temporary directory, without tools, and leaves no session behind. At most two run
@@ -72,5 +73,6 @@ paseo plugin logs paseo-recap
 
 ## Status
 
-Feature-complete for the design in [docs/design.md](docs/design.md); not yet verified inside a
-running Paseo (see §7 there).
+Feature-complete for the design in [docs/design.md](docs/design.md). Verified on a running Paseo
+0.10.3 daemon (gating, recap rows in the timeline, settings); app visuals are checked by hand (see
+§7 there).

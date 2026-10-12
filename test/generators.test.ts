@@ -5,12 +5,15 @@ import { describe, expect, it } from "vitest";
 import {
   claudeArgs,
   codexArgs,
+  codexIsolationArgs,
   describeModelPlan,
   GeneratorUnavailableError,
   MAX_CONCURRENT_GENERATIONS,
   NoGeneratorError,
   opencodeArgs,
   parseClaudeResult,
+  parseCodexFeatures,
+  parseCodexMcpNames,
   parseOpencodeEvents,
   RecapGenerator,
   resolveCandidates,
@@ -87,9 +90,28 @@ describe("resolveCandidates", () => {
 
 describe("CLI arguments", () => {
   it("keeps Codex hooks and notifications out of background recaps", () => {
-    const args = codexArgs("gpt-6-luna", "/s.json", "/o.json");
+    const args = codexArgs("gpt-6-luna", "/s.json", "/o.json", []);
     expect(args).toEqual(expect.arrayContaining(["--ephemeral", "--disable", "hooks", "notify=[]"]));
     expect(args.at(-1)).toBe("-");
+  });
+
+  it("turns off every Codex MCP server and the tool features this Codex knows", () => {
+    const features = parseCodexFeatures(
+      ["shell_tool  stable  true", "computer_use  stable  true", "search_tool  removed  false", "other  stable  true"].join("\n"),
+    );
+    const args = codexIsolationArgs(parseCodexMcpNames('[{"name":"paseo"},{"name":"context7"}]'), features);
+    expect(args).toEqual([
+      "--config", "mcp_servers.paseo.enabled=false",
+      "--config", "mcp_servers.context7.enabled=false",
+      "--disable", "computer_use",
+      "--disable", "shell_tool",
+      "--config", 'web_search="disabled"',
+    ]);
+  });
+
+  it("refuses Codex when an MCP server cannot be disabled safely", () => {
+    expect(() => parseCodexMcpNames('[{"name":"a.b"}]')).toThrow(GeneratorUnavailableError);
+    expect(() => parseCodexMcpNames("not json")).toThrow(GeneratorUnavailableError);
   });
 
   it("runs OpenCode with a read-only agent in the temp directory", () => {
