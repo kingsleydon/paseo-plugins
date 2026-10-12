@@ -331,8 +331,8 @@ Adapters (verified against claude 2.1.292, codex-cli 0.160.0, opencode 1.18.30 o
 
 | Provider | Invocation | Notes |
 |---|---|---|
-| `claude` | `claude -p --output-format json --json-schema <schema> --system-prompt <short> --tools "" --no-session-persistence --setting-sources "" --strict-mcp-config --settings '{"alwaysThinkingEnabled":false}' [--model haiku]` | Reads `structured_output`. No tools, hooks, plugins, CLAUDE.md, or saved session |
-| `codex` | `codex exec --ephemeral --skip-git-repo-check --sandbox read-only --output-schema <file> --output-last-message <file> --disable hooks --config notify=[] --config model_reasoning_effort="low" [--model gpt-6-luna] -` | User config stays (auth, gateways, MCP servers); hooks and turn notifications off |
+| `claude` | `claude -p --output-format json --json-schema <schema> --system-prompt <short> --tools "" --no-session-persistence --setting-sources "" --strict-mcp-config --settings '{"alwaysThinkingEnabled":false}' [--model <id>]` | Reads `structured_output`. No tools, hooks, plugins, CLAUDE.md, or saved session |
+| `codex` | `codex exec --ephemeral --skip-git-repo-check --sandbox read-only --output-schema <file> --output-last-message <file> --disable hooks --config notify=[] --config model_reasoning_effort="low" [--model <id>] -` | User config stays (auth, gateways, MCP servers); hooks and turn notifications off |
 | `opencode` | `opencode run --pure --format json --agent plan --dir <tmp> [--model p/m]`, then `opencode session delete <id>` | Read-only agent; permission requests auto-rejected; the session it always persists is deleted |
 
 Measured: Claude Haiku ~3 s and ~$0.002 per recap; Codex GPT-6-Luna ~10 s; Codex default model ~15 s.
