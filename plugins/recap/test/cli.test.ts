@@ -5,6 +5,7 @@ import {
   opencodeArgs,
   parseClaudeResult,
   parseOpencodeEvents,
+  parseOpencodeMajor,
 } from "../server/cli";
 import { GeneratorUnavailableError } from "../server/errors";
 
@@ -15,10 +16,30 @@ describe("CLI arguments", () => {
     expect(args.at(-1)).toBe("-");
   });
 
-  it("runs OpenCode with a read-only agent in the temp directory", () => {
-    expect(opencodeArgs("p/m", "/tmp/x")).toEqual([
+  it("runs OpenCode 1.x with a read-only agent in the temp directory", () => {
+    expect(opencodeArgs("p/m", "/tmp/x", 1)).toEqual([
       "run", "--pure", "--format", "json", "--agent", "plan", "--dir", "/tmp/x", "--model", "p/m",
     ]);
+  });
+
+  it("drops the 1.x-only flags on the opencode 2.x CLI", () => {
+    expect(opencodeArgs("p/m", "/tmp/x", 2)).toEqual([
+      "run", "--format", "json", "--agent", "plan", "--model", "p/m",
+    ]);
+  });
+
+  it("keeps the 1.x flags while the opencode generation is unknown", () => {
+    expect(opencodeArgs("p/m", "/tmp/x", null)).toEqual([
+      "run", "--pure", "--format", "json", "--agent", "plan", "--dir", "/tmp/x", "--model", "p/m",
+    ]);
+  });
+
+  it("reads the opencode generation from --version output", () => {
+    expect(parseOpencodeMajor("opencode v2.0.32", 0)).toBe(2);
+    expect(parseOpencodeMajor("1.19.3", 0)).toBe(1);
+    expect(parseOpencodeMajor("something else", 0)).toBeNull();
+    expect(parseOpencodeMajor("opencode v2.0.32", 1)).toBeNull();
+    expect(parseOpencodeMajor("opencode v2.0.32", null)).toBeNull();
   });
 
   it("disables Claude tools, persistence, settings, and thinking", () => {

@@ -1,9 +1,9 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { claudeArgs, codexArgs, opencodeArgs, parseClaudeResult, parseCodexResult, parseOpencodeEvents } from "./cli";
+import { claudeArgs, codexArgs, opencodeArgs, parseClaudeResult, parseCodexResult, parseOpencodeEvents, parseOpencodeMajor } from "./cli";
 import { abortError, errorMessage, GeneratorUnavailableError, NoGeneratorError } from "./errors";
 import type { GeneratorCandidate } from "./models";
-import { sanitizeEnv, type RunProcess } from "./process";
+import { sanitizeEnv, type ProcessResult, type RunProcess } from "./process";
 import { RECAP_JSON_SCHEMA, type ParsedRecap } from "./prompt";
 
 const GENERATE_TIMEOUT_MS = 60_000;
@@ -34,6 +34,8 @@ export class RecapGenerator {
   readonly #unavailableUntil = new Map<string, number>();
   readonly #waiting: Array<() => void> = [];
   #active = 0;
+  /** opencode CLI generation, detected once per plugin process: null is unknown (use 1.x flags). */
+  #opencodeMajor: number | null | undefined;
 
   constructor(deps: GeneratorDeps) {
     this.#deps = deps;
@@ -140,7 +142,8 @@ export class RecapGenerator {
           return await parseCodexResult(result, outputPath);
         }
         case "opencode": {
-          const parsed = parseOpencodeEvents(await run(opencodeArgs(candidate.model, workdir)));
+          const major = await this.#opencodeGeneration(run);
+          const parsed = parseOpencodeEvents(await run(opencodeArgs(candidate.model, workdir, major)));
           // `opencode run` always persists a session; remove it so recaps leave no trace.
           if (parsed.sessionId) await this.#deleteOpencodeSession(candidate, parsed.sessionId, workdir, env);
           if (parsed.error) throw parsed.error;
@@ -150,6 +153,17 @@ export class RecapGenerator {
     } finally {
       await rm(workdir, { recursive: true, force: true }).catch(() => undefined);
     }
+  }
+
+  /** Detects the opencode CLI generation once; spawn failures propagate as a failed candidate. */
+  async #opencodeGeneration(
+    run: (args: readonly string[]) => Promise<ProcessResult>,
+  ): Promise<number | null> {
+    if (this.#opencodeMajor === undefined) {
+      const result = await run(["--version"]);
+      this.#opencodeMajor = parseOpencodeMajor(result.stdout, result.code);
+    }
+    return this.#opencodeMajor;
   }
 
   async #deleteOpencodeSession(

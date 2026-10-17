@@ -99,4 +99,27 @@ describe("RecapGenerator queue and cleanup", () => {
     ).rejects.toThrow("invalid recap");
     expect(calls.at(-1)).toEqual(["session", "delete", "ses_9"]);
   });
+
+  it("detects the opencode 2.x CLI once and drops the 1.x-only flags", async () => {
+    const calls: string[][] = [];
+    const recap = JSON.stringify({ summary: "S.", next_action: null });
+    const fake: RunProcess = async (_command, args) => {
+      calls.push([...args]);
+      if (args[0] === "--version") return { code: 0, stdout: "opencode v2.0.32", stderr: "" };
+      if (args[0] === "session") return { code: 0, stdout: "", stderr: "" };
+      const stdout = JSON.stringify({ type: "text", sessionID: "ses_2", part: { text: recap } });
+      return { code: 0, stdout, stderr: "" };
+    };
+    const generator = new RecapGenerator(deps(fake));
+    const generated = await generator.generate(
+      "p",
+      resolveCandidates({ provider: "opencode" }, NO_PROVIDERS),
+      new AbortController().signal,
+    );
+    expect(generated).toMatchObject({ summary: "S.", nextAction: null, provider: "opencode" });
+    // The version probe runs once, then the run itself without `--pure` or `--dir`.
+    expect(calls[0]).toEqual(["--version"]);
+    expect(calls[1]).toEqual(["run", "--format", "json", "--agent", "plan"]);
+    expect(calls.at(-1)).toEqual(["session", "delete", "ses_2"]);
+  });
 });
