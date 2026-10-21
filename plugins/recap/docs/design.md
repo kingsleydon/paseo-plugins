@@ -333,7 +333,8 @@ Adapters (verified against claude 2.1.292, codex-cli 0.160.0, opencode 1.18.30 o
 |---|---|---|
 | `claude` | `claude -p --output-format json --json-schema <schema> --system-prompt <short> --tools "" --no-session-persistence --setting-sources "" --strict-mcp-config --settings '{"alwaysThinkingEnabled":false}' [--model <id>]` | Reads `structured_output`. No tools, hooks, plugins, CLAUDE.md, or saved session |
 | `codex` | `codex exec --ephemeral --skip-git-repo-check --sandbox read-only --output-schema <file> --output-last-message <file> --disable hooks --config notify=[] --config model_reasoning_effort="low" [--model <id>] -` | User config stays (auth, gateways, MCP servers); hooks and turn notifications off |
-| `opencode` | `opencode run --pure --format json --agent plan --dir <tmp> [--model p/m]`, then `opencode session delete <id>` | Read-only agent; permission requests auto-rejected; the session it always persists is deleted |
+| `opencode` 1.x | `opencode run --pure --format json --agent plan --dir <tmp> [--model p/m]`, then `opencode session delete <id>` | Read-only agent; permission requests auto-rejected; the session it always persists is deleted |
+| `opencode` 2.x | `opencode run --standalone --format json --agent plan [--model p/m]`, then `opencode session delete --standalone <id>` | Runs in the temporary directory via process cwd; `--standalone` avoids a persistent background service; no `--pure` equivalent, so OpenCode plugins load |
 
 Measured: Claude Haiku ~3 s and ~$0.002 per recap; Codex GPT-6-Luna ~10 s; Codex default model ~15 s.
 With extended thinking on, Haiku spent 2–4 K thinking tokens deliberating over the prompt and hit the

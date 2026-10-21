@@ -80,7 +80,7 @@ you type.
 |---|---|
 | `claude` | `claude -p --json-schema … --tools "" --strict-mcp-config --setting-sources "" --no-session-persistence`, thinking off |
 | `codex` | `codex exec --ephemeral --sandbox read-only --output-schema … --disable hooks`, low reasoning effort, with your Codex configuration |
-| `opencode` | `opencode run --pure --agent plan --format json`; the session is deleted afterwards |
+| `opencode` | 1.x: `opencode run --pure --agent plan --format json`; 2.x: `opencode run --standalone --agent plan --format json`; the session is deleted afterwards, also with `--standalone` on 2.x |
 
 See [docs/design.md](docs/design.md) for the full design, edge cases, and a comparison with Claude
 Code, Codex, and OMP.
@@ -94,7 +94,9 @@ Code, Codex, and OMP.
   gets recaps only for itself.
 - Claude runs with no tools, MCP servers, or settings. Codex runs in a read-only sandbox with your
   own Codex configuration, including any MCP servers you set up there. OpenCode uses its read-only
-  `plan` agent, which rejects permission requests.
+  `plan` agent, which rejects permission requests. OpenCode 1.x uses `--pure`; 2.x has no equivalent,
+  so OpenCode plugins load. On 2.x, both the run and session deletion use `--standalone` to avoid a
+  persistent background service.
 - Recaps are stored with owner-only permissions, kept for 30 days, and deleted when the agent is
   archived. Recap rows in the conversation live in daemon memory and are gone after a restart.
 - Like every Paseo plugin, this is trusted code that runs unsandboxed on the daemon host.
