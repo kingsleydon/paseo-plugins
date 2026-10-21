@@ -1,6 +1,6 @@
 # Keeps a release PR open with the next version and CHANGELOG.md of each changed plugin, from
-# Conventional Commits on main. Merging it tags `<folder>-v<version>`, creates the GitHub Release,
-# and starts the npm publish for that tag.
+# Conventional Commits on main. Merging it tags `<folder>-v<version>` and creates the GitHub Release;
+# the tag starts publish.yml.
 name: Release
 
 on:
@@ -12,23 +12,13 @@ permissions: {}
 jobs:
   release-please:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-      actions: write
     steps:
-      - uses: googleapis/release-please-action@v5
-        id: release
-      # Tags pushed with GITHUB_TOKEN do not start workflows, but workflow_dispatch does.
-      - name: Publish each released plugin
-        if: steps.release.outputs.releases_created == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          OUTPUTS: ${{ toJSON(steps.release.outputs) }}
-        run: |
-          jq -r '(.paths_released | fromjson)[] as $path | .[$path + "--tag_name"]' <<< "$OUTPUTS" |
-            while read -r tag; do
-              gh workflow run publish.yml --ref "$tag"
-            done
+      # A GitHub App token, unlike GITHUB_TOKEN, lets the release PR run CI and the tag run publish.yml.
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}

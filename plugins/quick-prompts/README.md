@@ -108,7 +108,7 @@ paseo plugin logs paseo-quick-prompts
 ## Releasing
 
 Title PRs `fix(quick-prompts): ...` or `feat(quick-prompts): ...`, then merge the release PR that
-release-please opens. It bumps the version, updates `CHANGELOG.md`, tags
+release-please opens. It bumps the version, updates [`CHANGELOG.md`](CHANGELOG.md), tags
 `quick-prompts-v<version>`, creates the GitHub Release, and publishes to npm. See the
 [repository README](../../README.md#releasing) for details.
 

@@ -127,7 +127,7 @@ paseo plugin logs paseo-recap
 ## Releasing
 
 Title PRs `fix(recap): ...` or `feat(recap): ...`, then merge the release PR that release-please
-opens. It bumps the version, updates `CHANGELOG.md`, tags `recap-v<version>`,
+opens. It bumps the version, updates [`CHANGELOG.md`](CHANGELOG.md), tags `recap-v<version>`,
 creates the GitHub Release, and publishes to npm with [trusted publishing](https://docs.npmjs.com/trusted-publishers).
 See the [repository README](../../README.md#releasing) for details.
 
