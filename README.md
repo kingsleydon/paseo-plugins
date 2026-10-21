@@ -28,20 +28,30 @@ CI runs the type check and tests for every plugin on pull requests and pushes to
 
 ## Releasing
 
-Releases publish to npm from GitHub Actions with [trusted publishing](https://docs.npmjs.com/trusted-publishers)
+Versions, changelogs, and GitHub Releases come from [release-please](https://github.com/googleapis/release-please),
+and releases publish to npm from GitHub Actions with [trusted publishing](https://docs.npmjs.com/trusted-publishers)
 (OIDC), so no npm token is stored anywhere.
 
-1. Bump `version` in `plugins/<folder>/package.json` in a PR and merge it.
-2. Tag the merged commit `<folder>-v<version>` and push the tag:
-
-   ```bash
-   git tag recap-v0.2.4 && git push origin recap-v0.2.4
-   ```
+1. Title PRs and commits with [Conventional Commits](https://www.conventionalcommits.org/), scoped
+   to the plugin folder: `fix(recap): ...`, `feat(quick-prompts): ...`. release-please reads the
+   squash-merged commits on `main` and assigns each to the plugins whose files it changes. `fix`
+   bumps the patch version, `feat` the minor version, and `!` (breaking) the minor version while a
+   plugin is below 1.0; other types such as `docs`, `chore`, or `ci` do not release.
+2. [`.github/workflows/release.yml`](.github/workflows/release.yml) keeps one release PR open that
+   bumps `version` in each changed plugin's `package.json` and `package-lock.json` and adds the
+   entry to its `CHANGELOG.md`.
+3. Merging the release PR tags each plugin `<folder>-v<version>` (for example `recap-v0.2.5`),
+   creates its GitHub Release with the changelog entry, and starts the npm publish for that tag.
 
 [`.github/workflows/publish.yml`](.github/workflows/publish.yml) checks that `plugins/<folder>`
 exists and that its version matches the tag, then runs `npm ci`, the type check, and the tests, and
 publishes that folder with provenance. The job runs in the `npm` GitHub environment, which only
-`*-v*` tags can deploy to, and npm trusts only that workflow and environment.
+`*-v*` tags can deploy to, and npm trusts only that workflow and environment. To publish a tag again,
+run `gh workflow run publish.yml --ref <tag>`.
+
+Release state lives in [`release-please-config.json`](release-please-config.json) and
+[`.release-please-manifest.json`](.release-please-manifest.json); release-please updates the
+manifest, so do not edit versions by hand.
 
 ## License
 

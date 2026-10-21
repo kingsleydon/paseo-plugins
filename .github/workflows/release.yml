@@ -1,0 +1,34 @@
+# Keeps a release PR open with the next version and CHANGELOG.md of each changed plugin, from
+# Conventional Commits on main. Merging it tags `<folder>-v<version>`, creates the GitHub Release,
+# and starts the npm publish for that tag.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+      # Tags pushed with GITHUB_TOKEN do not start workflows, but workflow_dispatch does.
+      - name: Publish each released plugin
+        if: steps.release.outputs.releases_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          OUTPUTS: ${{ toJSON(steps.release.outputs) }}
+        run: |
+          jq -r '(.paths_released | fromjson)[] as $path | .[$path + "--tag_name"]' <<< "$OUTPUTS" |
+            while read -r tag; do
+              gh workflow run publish.yml --ref "$tag"
+            done

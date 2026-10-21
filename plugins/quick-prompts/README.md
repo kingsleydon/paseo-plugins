@@ -107,15 +107,10 @@ paseo plugin logs paseo-quick-prompts
 
 ## Releasing
 
-Bump `version` in `package.json` and the two root `version` fields in `package-lock.json` in a PR
-(`npm version <version> --no-git-tag-version` does both), merge it, then tag the merged commit with
-`quick-prompts-v<version>`:
-
-```bash
-git tag quick-prompts-v<version> && git push origin quick-prompts-v<version>
-```
-
-See the [repository README](../../README.md#releasing) for how the publish workflow works.
+Title PRs `fix(quick-prompts): ...` or `feat(quick-prompts): ...`, then merge the release PR that
+release-please opens. It bumps the version, updates `CHANGELOG.md`, tags
+`quick-prompts-v<version>`, creates the GitHub Release, and publishes to npm. See the
+[repository README](../../README.md#releasing) for details.
 
 ## License
 

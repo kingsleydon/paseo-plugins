@@ -1,12 +1,13 @@
 # Publishes one plugin to npm with trusted publishing (OIDC): no npm token is stored anywhere.
-# Release: bump "version" in plugins/<folder>/package.json, merge, then push a matching tag,
-# e.g. `git tag recap-v0.2.4` publishes plugins/recap at version 0.2.4.
+# release.yml dispatches this for each tag it creates; a tag such as recap-v0.2.4 publishes
+# plugins/recap at version 0.2.4. Pushing a tag by hand runs it too.
 name: Publish to npm
 
 on:
   push:
     tags:
       - "*-v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,6 +15,7 @@ permissions:
 
 jobs:
   publish:
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     # npm trusts only this environment, which GitHub restricts to *-v* tags.
     environment: npm
