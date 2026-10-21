@@ -34,7 +34,7 @@ and releases publish to npm from GitHub Actions with [trusted publishing](https:
 
 1. Title PRs with [Conventional Commits](https://www.conventionalcommits.org/), scoped to the plugin
    folder: `fix(recap): ...`, `feat(quick-prompts): ...`. PRs are squash-merged with the PR title as
-   the commit message, and [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml) checks
+   the commit title, and [`.github/workflows/pr-title.yml`](.github/workflows/pr-title.yml) checks
    the title. release-please assigns each commit on `main` to the plugins whose files it changes.
    `fix` bumps the patch version, `feat` the minor version, and `!` (breaking) the minor version
    while a plugin is below 1.0; `docs`, `chore`, `ci`, and similar types do not release.
