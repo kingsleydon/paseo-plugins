@@ -126,15 +126,10 @@ paseo plugin logs paseo-recap
 
 ## Releasing
 
-Releases publish to npm from GitHub Actions with [trusted publishing](https://docs.npmjs.com/trusted-publishers)
-(OIDC), so no npm token is stored anywhere. Bump `version` in `package.json` in a PR, merge it,
-then tag the merged commit with `recap-v<version>`:
-
-```bash
-git tag recap-v0.2.4 && git push origin recap-v0.2.4
-```
-
-See the [repository README](../../README.md#releasing) for how the publish workflow works.
+Title PRs `fix(recap): ...` or `feat(recap): ...`, then merge the release PR that release-please
+opens. It bumps the version, updates [`CHANGELOG.md`](CHANGELOG.md), tags `recap-v<version>`,
+creates the GitHub Release, and publishes to npm with [trusted publishing](https://docs.npmjs.com/trusted-publishers).
+See the [repository README](../../README.md#releasing) for details.
 
 ## License
 

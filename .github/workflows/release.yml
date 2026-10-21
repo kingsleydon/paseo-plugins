@@ -1,0 +1,19 @@
+# Keeps a release PR open with the next version and CHANGELOG.md of each changed plugin, from
+# Conventional Commits on main. Merging it tags `<folder>-v<version>` and creates the GitHub Release;
+# the tag starts publish.yml.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      # A fine-grained PAT, unlike GITHUB_TOKEN, lets the release PR run CI and the tag run publish.yml.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}

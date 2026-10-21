@@ -1,6 +1,6 @@
 # Publishes one plugin to npm with trusted publishing (OIDC): no npm token is stored anywhere.
-# Release: bump "version" in plugins/<folder>/package.json, merge, then push a matching tag,
-# e.g. `git tag recap-v0.2.4` publishes plugins/recap at version 0.2.4.
+# Runs on the <folder>-v<version> tags that release.yml creates: recap-v0.2.4 publishes plugins/recap
+# at version 0.2.4.
 name: Publish to npm
 
 on:
@@ -18,7 +18,7 @@ jobs:
     # npm trusts only this environment, which GitHub restricts to *-v* tags.
     environment: npm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Resolve the plugin folder from the tag
         id: plugin
         env:
@@ -31,7 +31,7 @@ jobs:
           actual="$(node -p 'require(process.argv[1]).version' "./plugins/$folder/package.json")"
           test "$actual" = "$version" || { echo "Tag version $version does not match package.json $actual"; exit 1; }
           echo "dir=plugins/$folder" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
