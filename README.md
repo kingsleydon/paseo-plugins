@@ -50,10 +50,10 @@ and releases publish to npm from GitHub Actions with [trusted publishing](https:
 the `npm` GitHub environment, which only `*-v*` tags can deploy to, and npm trusts only that workflow
 and environment.
 
-release-please runs as a GitHub App (`RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY`
-secret) with Contents, Issues, and Pull requests write access on this repository. Events made with
-the default `GITHUB_TOKEN` do not start workflows, so the App token is what lets CI run on the
-release PR and the release tag start `publish.yml`.
+release-please uses the `RELEASE_PLEASE_TOKEN` secret: a fine-grained personal access token for
+this repository only, with Contents, Issues, and Pull requests write access. Events made with the
+default `GITHUB_TOKEN` do not start workflows, so this token is what lets CI run on the release PR
+and the release tag start `publish.yml`.
 
 Release state lives in [`release-please-config.json`](release-please-config.json) and
 [`.release-please-manifest.json`](.release-please-manifest.json); release-please updates the
