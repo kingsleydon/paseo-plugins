@@ -1,4 +1,4 @@
-import type { PluginHookAgent } from "@getpaseo/plugin/server";
+import type { PluginHookAgent, PluginTurnOutcome } from "@getpaseo/plugin/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recapSettings, type RecapSettings, type StoredRecap } from "../shared/recap";
 import type { GeneratedRecap } from "../server/generators";
@@ -25,6 +25,9 @@ function turns(count: number): AgentTimelineItem[] {
     { type: "assistant_message", text: `reply ${index}` },
   ]).flat();
 }
+
+/** What the daemon returns when the scheduler reads an agent's conversation; one turn by default. */
+const conversations = new Map<string, AgentTimelineItem[]>();
 
 class MemoryStore implements RecapStoreLike {
   readonly recaps = new Map<string, StoredRecap>();
@@ -65,8 +68,8 @@ function setup(overrides: Partial<RecapSettings> = GATED) {
       model: "haiku",
     }),
   );
-  const fetchAgentContext = vi.fn(async (): Promise<AgentContext> => ({
-    timeline: turns(1),
+  const fetchAgentContext = vi.fn(async (agentId: string): Promise<AgentContext> => ({
+    timeline: conversations.get(agentId) ?? turns(1),
     title: "Fetched",
     workspaceId: "ws-fetched",
     provider: "codex",
@@ -84,12 +87,23 @@ function setup(overrides: Partial<RecapSettings> = GATED) {
   return { store, generate, scheduler, settings, fetchAgentContext, publish };
 }
 
+function finishTurn(
+  scheduler: RecapScheduler,
+  a: PluginHookAgent,
+  outcome: PluginTurnOutcome,
+  timeline: AgentTimelineItem[],
+) {
+  conversations.set(a.id, timeline);
+  return scheduler.turnEnded(a, outcome);
+}
+
 async function endTurn(scheduler: RecapScheduler, a: PluginHookAgent, timeline: AgentTimelineItem[]) {
   scheduler.turnStarted(a);
-  await scheduler.turnEnded(a, { kind: "completed" }, timeline);
+  await finishTurn(scheduler, a, { kind: "completed" }, timeline);
 }
 
 beforeEach(() => {
+  conversations.clear();
   vi.useFakeTimers();
 });
 afterEach(() => {
@@ -143,7 +157,7 @@ describe("RecapScheduler", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(generate).toHaveBeenCalledOnce();
     expect(store.get("a")).toMatchObject({ summary: "Recap text.", turnCount: 3, stale: false });
-    expect(generate.mock.calls[0]?.[0]).toContain("Overall goal: Ship recaps");
+    expect(generate.mock.calls[0]?.[0]).toContain("Overall goal: Fetched");
     expect(publish).toHaveBeenCalledWith(store.get("a"));
   });
 
@@ -168,11 +182,26 @@ describe("RecapScheduler", () => {
     expect(generate).toHaveBeenCalledTimes(2);
   });
 
+  it("skips an automatic recap while the daemon reports the agent running", async () => {
+    const { scheduler, generate, fetchAgentContext } = setup(EVERY_TURN);
+    fetchAgentContext.mockResolvedValueOnce({
+      timeline: turns(1),
+      title: null,
+      workspaceId: null,
+      provider: null,
+      running: true,
+    });
+    await endTurn(scheduler, agent("a"), turns(1));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(generate).not.toHaveBeenCalled();
+    expect(scheduler.view("a")).toMatchObject({ state: "idle", error: null });
+  });
+
   it("cancels the timer and marks the recap stale when a new turn starts", async () => {
     const { scheduler, generate, store } = setup();
     await endTurn(scheduler, agent("a"), turns(3));
     await vi.advanceTimersByTimeAsync(DELAY_MS);
-    await scheduler.turnEnded(agent("a"), { kind: "completed" }, turns(5));
+    await finishTurn(scheduler, agent("a"), { kind: "completed" }, turns(5));
     scheduler.turnStarted(agent("a"));
     expect(store.get("a")?.stale).toBe(true);
     await vi.advanceTimersByTimeAsync(DELAY_MS * 2);
@@ -204,13 +233,13 @@ describe("RecapScheduler", () => {
   it("skips canceled turns, pending permissions, and running subagents when waiting for them", async () => {
     const { scheduler, generate } = setup({ ...GATED, waitForSubagents: true });
     scheduler.turnStarted(agent("a"));
-    await scheduler.turnEnded(agent("a"), { kind: "canceled", reason: "user" }, turns(3));
+    await finishTurn(scheduler, agent("a"), { kind: "canceled", reason: "user" }, turns(3));
     await vi.advanceTimersByTimeAsync(DELAY_MS);
     expect(generate).not.toHaveBeenCalled();
 
     scheduler.turnStarted(agent("b"));
     scheduler.permissionRequested(agent("b"), "req-1");
-    await scheduler.turnEnded(agent("b"), { kind: "completed" }, turns(3));
+    await finishTurn(scheduler, agent("b"), { kind: "completed" }, turns(3));
     await vi.advanceTimersByTimeAsync(DELAY_MS);
     expect(generate).not.toHaveBeenCalled();
 
@@ -218,7 +247,7 @@ describe("RecapScheduler", () => {
     await endTurn(scheduler, agent("c"), turns(3));
     await vi.advanceTimersByTimeAsync(DELAY_MS);
     expect(generate).not.toHaveBeenCalled();
-    await scheduler.turnEnded(agent("child", "c"), { kind: "completed" }, turns(1));
+    await finishTurn(scheduler, agent("child", "c"), { kind: "completed" }, turns(1));
     await vi.advanceTimersByTimeAsync(DELAY_MS);
     expect(generate).toHaveBeenCalledOnce();
   });
@@ -282,12 +311,12 @@ describe("RecapScheduler", () => {
     expect(store.get("a")).toBeNull();
     expect(scheduler.list()).toEqual([]);
   });
-  it("passes the agent's provider to the generator and records agent context", async () => {
+  it("passes the agent's provider to the generator and records the daemon's agent context", async () => {
     const { scheduler, generate, store } = setup(EVERY_TURN);
-    await endTurn(scheduler, { ...agent("a"), provider: "codex" }, turns(1));
+    await endTurn(scheduler, agent("a"), turns(1));
     await vi.advanceTimersByTimeAsync(10_000);
     expect(generate.mock.calls[0]?.[2]).toEqual({ agentProvider: "codex", trigger: "auto" });
-    expect(store.get("a")?.agent).toEqual({ title: "Ship recaps", workspaceId: "ws", provider: "codex" });
+    expect(store.get("a")?.agent).toEqual({ title: "Fetched", workspaceId: "ws-fetched", provider: "codex" });
   });
 
   it("counts user turns over the full timeline while keeping only recent exchanges", async () => {
@@ -312,7 +341,7 @@ describe("RecapScheduler", () => {
     const { scheduler, generate } = setup(EVERY_TURN);
     scheduler.turnStarted(agent("a"));
     scheduler.permissionRequested(agent("a"), "req");
-    await scheduler.turnEnded(agent("a"), { kind: "completed" }, turns(1));
+    await finishTurn(scheduler, agent("a"), { kind: "completed" }, turns(1));
     await vi.advanceTimersByTimeAsync(60_000);
     expect(generate).not.toHaveBeenCalled();
     await scheduler.permissionResolved(agent("a"), "req");
@@ -351,7 +380,7 @@ describe("RecapScheduler", () => {
     fetchAgentContext.mockRejectedValueOnce(new Error("offline"));
     const view = await scheduler.regenerate("x");
     expect(generate).not.toHaveBeenCalled();
-    expect(view).toMatchObject({ state: "error", error: "Could not read the conversation." });
+    expect(view).toMatchObject({ state: "error", error: "Could not generate a recap." });
   });
 
   it("reports an empty conversation on manual recaps", async () => {

@@ -119,10 +119,10 @@ export default function contribute(server: PluginServerContext) {
       await ready;
       scheduler.turnStarted(agent);
     }),
-    server.on("agent.turn_ended", async ({ agent, outcome, timeline }, context) => {
+    server.on("agent.turn_ended", async ({ agent, outcome }, context) => {
       paseo = context.paseo;
       await ready;
-      await scheduler.turnEnded(agent, outcome, timeline);
+      await scheduler.turnEnded(agent, outcome);
     }),
     server.on("agent.permission_requested", ({ agent, request }) => {
       scheduler.permissionRequested(agent, request.id);

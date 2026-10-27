@@ -2,7 +2,7 @@ import type { PluginHookAgent, PluginTurnOutcome } from "@getpaseo/plugin/server
 import type { RecapSettings, RecapState, RecapView, StoredRecap } from "../shared/recap";
 import { errorMessage, NoGeneratorError, RecapSkippedError } from "./errors";
 import type { GeneratedRecap } from "./generators";
-import { buildRecapHistory, countUserTurns, isCompacting, latestActiveTask, trimForRecap } from "./history";
+import { buildRecapHistory, countUserTurns, isCompacting, latestActiveTask } from "./history";
 import type { AgentTimelineItem } from "./paseo-types";
 import { historyBudget, renderPrompt } from "./prompt";
 
@@ -47,7 +47,7 @@ export interface SchedulerDeps {
   store: RecapStoreLike;
   readSettings(): Promise<RecapSettings>;
   generate(prompt: string, signal: AbortSignal, options: GenerateOptions): Promise<GeneratedRecap>;
-  /** Fresh timeline for manual recaps of agents this plugin has not observed yet. */
+  /** The conversation and live status, read right before each recap. */
   fetchAgentContext(agentId: string): Promise<AgentContext>;
   /** Shows a newly stored recap in the agent's conversation. */
   publish(recap: StoredRecap): Promise<void>;
@@ -70,10 +70,6 @@ interface AgentEntry {
   lastTurnCompleted: boolean;
   /** Completed turns since the last stored recap; null until known (no recap observed yet). */
   turnsSinceRecap: number | null;
-  /** User messages in the whole conversation (the kept timeline is trimmed). */
-  userTurns: number;
-  /** Trimmed to what a recap reads; see `trimForRecap`. */
-  timeline: readonly AgentTimelineItem[] | null;
   pendingPermissions: Set<string>;
   runningChildren: Set<string>;
   timer: ReturnType<typeof setTimeout> | null;
@@ -114,16 +110,10 @@ export class RecapScheduler {
     if (entry.parentAgentId) this.#entryById(entry.parentAgentId).runningChildren.add(entry.id);
   }
 
-  async turnEnded(
-    agent: PluginHookAgent,
-    outcome: PluginTurnOutcome,
-    timeline: readonly AgentTimelineItem[],
-  ): Promise<void> {
+  async turnEnded(agent: PluginHookAgent, outcome: PluginTurnOutcome): Promise<void> {
     const entry = this.#entry(agent);
     entry.running = false;
     entry.runningSince = null;
-    entry.timeline = trimForRecap(timeline);
-    entry.userTurns = countUserTurns(timeline);
     entry.lastTurnCompleted = outcome.kind === "completed";
     if (entry.lastTurnCompleted && entry.turnsSinceRecap !== null) entry.turnsSinceRecap++;
     if (entry.parentAgentId) {
@@ -178,30 +168,6 @@ export class RecapScheduler {
     this.#clearTimer(entry);
     entry.error = null;
     entry.state = "generating";
-    let context: AgentContext;
-    try {
-      context = await this.#deps.fetchAgentContext(agentId);
-    } catch (error) {
-      entry.state = "error";
-      entry.error = "Could not read the conversation.";
-      this.#deps.log(`could not fetch timeline for agent ${agentId}`, errorMessage(error));
-      return this.view(agentId);
-    }
-    entry.timeline = trimForRecap(context.timeline);
-    entry.userTurns = countUserTurns(context.timeline);
-    entry.title = context.title ?? entry.title;
-    entry.workspaceId = context.workspaceId ?? entry.workspaceId;
-    entry.provider = context.provider ?? entry.provider;
-    // Trust the daemon's live status over hook bookkeeping, which can miss a turn's end.
-    if (context.running) {
-      entry.state = "idle";
-      entry.error = "The agent is running. Try again when it is idle.";
-      return this.view(agentId);
-    }
-    if (entry.running) {
-      entry.running = false;
-      entry.runningSince = null;
-    }
     await this.#run(entry, "manual");
     return this.view(agentId);
   }
@@ -284,9 +250,7 @@ export class RecapScheduler {
     if (entry.running || !entry.lastTurnCompleted || entry.inFlight) return false;
     if (entry.pendingPermissions.size > 0) return false;
     if (settings.waitForSubagents && this.#hasBlockingChild(entry)) return false;
-    if (entry.failures >= MAX_CONSECUTIVE_FAILURES || !entry.timeline) return false;
-    if (isCompacting(entry.timeline)) return false;
-    if (entry.userTurns < settings.minTurns) return false;
+    if (entry.failures >= MAX_CONSECUTIVE_FAILURES) return false;
     // Without an observed recap (fresh agent or daemon restart), recap the next completed turn.
     return entry.turnsSinceRecap === null || entry.turnsSinceRecap >= settings.turnsBetweenRecaps;
   }
@@ -302,20 +266,32 @@ export class RecapScheduler {
 
   async #generate(entry: AgentEntry, trigger: Trigger, abort: AbortController): Promise<void> {
     const revision = entry.revision;
-    const { historyExchanges } = await this.#deps.readSettings();
-    // A turn may have started while settings loaded; it has already reset this entry.
-    if (abort.signal.aborted || entry.revision !== revision || this.#disposed) return;
-    const timeline = entry.timeline ?? [];
-    const context = { goal: entry.title, activeTask: latestActiveTask(timeline) };
-    const history = buildRecapHistory(timeline, historyBudget(context), historyExchanges);
-    if (history === "") {
+    const manual = trigger === "manual";
+    const skip = (error: string | null) => {
       entry.state = "idle";
-      entry.error = trigger === "manual" ? "There is no conversation to recap yet." : null;
-      return;
-    }
-    entry.state = "generating";
-    entry.error = null;
+      entry.error = manual ? error : null;
+    };
     try {
+      const [settings, agent] = await Promise.all([
+        this.#deps.readSettings(),
+        this.#deps.fetchAgentContext(entry.id),
+      ]);
+      // A turn may have started meanwhile; it has already reset this entry.
+      if (abort.signal.aborted || entry.revision !== revision || this.#disposed) return;
+      entry.title = agent.title ?? entry.title;
+      entry.workspaceId = agent.workspaceId ?? entry.workspaceId;
+      entry.provider = agent.provider ?? entry.provider;
+      // Trust the daemon's live status over hook bookkeeping, which can miss a turn's end.
+      if (agent.running) return skip("The agent is running. Try again when it is idle.");
+      entry.running = false;
+      entry.runningSince = null;
+      const userTurns = countUserTurns(agent.timeline);
+      if (!manual && (isCompacting(agent.timeline) || userTurns < settings.minTurns)) return skip(null);
+      const context = { goal: entry.title, activeTask: latestActiveTask(agent.timeline) };
+      const history = buildRecapHistory(agent.timeline, historyBudget(context), settings.historyExchanges);
+      if (history === "") return skip("There is no conversation to recap yet.");
+      entry.state = "generating";
+      entry.error = null;
       const generated = await this.#deps.generate(renderPrompt(history, context), abort.signal, {
         agentProvider: entry.provider,
         trigger,
@@ -328,7 +304,7 @@ export class RecapScheduler {
         nextAction: generated.nextAction,
         generatedAt: new Date().toISOString(),
         revision,
-        turnCount: entry.userTurns,
+        turnCount: userTurns,
         stale: false,
         trigger,
         generator: { provider: generated.provider, model: generated.model },
@@ -413,8 +389,6 @@ export class RecapScheduler {
         runningSince: null,
         lastTurnCompleted: false,
         turnsSinceRecap: null,
-        userTurns: 0,
-        timeline: null,
         pendingPermissions: new Set(),
         runningChildren: new Set(),
         timer: null,

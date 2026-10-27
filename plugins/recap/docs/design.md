@@ -159,8 +159,7 @@ Available (verified against the installed `@getpaseo/plugin` 0.10.3 types):
 | Need | API |
 |---|---|
 | Turn lifecycle | `server.on("agent.turn_started" \| "agent.turn_ended" \| "agent.permission_requested" \| "agent.permission_resolved" \| "agent.archived")` |
-| Conversation at turn end | `agent.turn_ended.timeline: readonly AgentTimelineItem[]` (whole conversation) |
-| Conversation on demand | `paseo.agents.ref(id).timeline.refetch({ direction: "tail", projection: "canonical" })`, includes live agent status |
+| Conversation and live status | `paseo.agents.ref(id).timeline.refetch({ direction: "tail", projection: "canonical" })`. `agent.turn_ended.timeline` is always empty since Paseo 0.13, so it is not used. |
 | Daemon config (metadata model order) | `paseo.config.get()` → `metadataGeneration.providers`, `providers.<id>` |
 | Plan usage per provider | `paseo.providers.listUsage()` → `windows[].usedPct` |
 | Backend calls from UI | `defineRpc` + `server.handle` + `useRpc` / `client.rpc` |
@@ -181,8 +180,8 @@ Missing (drives design choices and upstream asks in §8):
 - Plugin timeline rows live in the daemon's memory only. → lines disappear after a daemon restart;
   the stored recap and the pill remain.
 - No access to provider-native recap events (OMP `recap_update`).
-- `agent.turn_ended` fires only for live turns, not imports/resumes. → manual `/paseo-recap` fetches the
-  timeline itself.
+- `agent.turn_ended` fires only for live turns, not imports/resumes, and carries no conversation. → every
+  recap, automatic or manual, fetches the timeline and live status right before generating.
 
 ## 5. Design
 
@@ -240,7 +239,9 @@ Schedule an automatic recap only when all hold (defaults in parentheses):
 | Not compacting context | OMP |
 | Nothing in flight; < 3 failures this turn | Claude Code, Codex |
 
-Rules are re-checked when the timer fires (settings, permissions, and children may have changed).
+Rules are re-checked when the timer fires (settings, permissions, and children may have changed). The
+message count and compaction rules need the conversation, so they are checked after it is fetched,
+together with the daemon's live status (a running agent is skipped).
 
 Paseo has no presence signal, so "away" is approximated by idle time (OMP model). The first recap
 waits for 3 messages, as in Claude Code and Codex. After that, defaults are more eager: every completed
@@ -263,9 +264,8 @@ Follows Codex: visible exchanges only.
 - Budget: the whole prompt ≤ 32 KiB (≈ 8 K tokens). Over budget: drop the oldest exchanges
   (`[Earlier exchanges omitted]`), then excerpt fields head + tail (`[... excerpted ...]`), always
   keeping the newest answer and a newer unanswered request (Codex). Cuts never split a UTF-8 character.
-- Memory: the scheduler keeps only `trimForRecap(timeline)` (the text, error, compaction, and todo
-  items of the last 100 exchanges, the setting's maximum) and a user-message count, not the whole
-  conversation each `turn_ended` carries.
+- Memory: the scheduler holds no conversation between recaps; it fetches the last 500 timeline items
+  when a recap runs.
 
 Tool output is ignored on purpose: it is the largest, noisiest, and most provider-specific part of a
 timeline, and the assistant's messages already state results.
