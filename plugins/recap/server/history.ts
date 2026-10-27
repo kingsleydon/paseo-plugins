@@ -1,16 +1,4 @@
-import { SETTING_RANGES } from "../shared/recap";
 import type { AgentTimelineItem } from "./paseo-types";
-
-/** Most exchanges a recap can read; the `historyExchanges` setting picks how many, up to this. */
-export const HISTORY_EXCHANGES_LIMIT = SETTING_RANGES.historyExchanges.max;
-/** Timeline items a recap reads; everything else is dropped before holding a timeline in memory. */
-const RECAP_ITEM_TYPES: ReadonlySet<AgentTimelineItem["type"]> = new Set([
-  "user_message",
-  "assistant_message",
-  "error",
-  "compaction",
-  "todo",
-]);
 
 const OMITTED_HISTORY = "[Earlier exchanges omitted]\n\n";
 const EXCERPT_MARKER = "\n[... excerpted ...]\n";
@@ -29,27 +17,6 @@ export function buildRecapHistory(
   maxExchanges: number,
 ): string {
   return formatHistory(collectExchanges(timeline).slice(-maxExchanges), maxHistoryBytes);
-}
-
-/**
- * Keeps only what a recap can read: the text items of the last `HISTORY_EXCHANGES_LIMIT` exchanges
- * plus the latest todo list. Turn-ended events carry the whole conversation, including tool output,
- * which is too much to hold for every agent.
- */
-export function trimForRecap(timeline: readonly AgentTimelineItem[]): AgentTimelineItem[] {
-  let seen = 0;
-  let start = 0;
-  for (let index = timeline.length - 1; index >= 0; index--) {
-    const item = timeline[index];
-    if (item?.type === "user_message" && item.text.trim() !== "" && ++seen === HISTORY_EXCHANGES_LIMIT) {
-      start = index;
-      break;
-    }
-  }
-  const kept = timeline.slice(start).filter((item) => RECAP_ITEM_TYPES.has(item.type));
-  if (kept.some((item) => item.type === "todo")) return kept;
-  const latestTodo = timeline.findLast((item) => item.type === "todo");
-  return latestTodo ? [latestTodo, ...kept] : kept;
 }
 
 /** True while the provider is compacting context; a recap would describe a moving target. */
