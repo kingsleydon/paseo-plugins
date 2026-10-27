@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/kingsleydon/paseo-plugins/compare/recap-v0.2.4...recap-v0.2.5) (2026-10-27)
+
+
+### Bug Fixes
+
+* **recap:** read the conversation when a recap runs ([#23](https://github.com/kingsleydon/paseo-plugins/issues/23)) ([e656993](https://github.com/kingsleydon/paseo-plugins/commit/e656993cc084536c5864edef2e7c26c77a1ad7ab))
+
 ## [0.2.4](https://github.com/kingsleydon/paseo-plugins/compare/v0.2.3...recap-v0.2.4) (2026-10-20)
 
 ### Bug Fixes
