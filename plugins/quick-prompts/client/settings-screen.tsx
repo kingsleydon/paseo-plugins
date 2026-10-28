@@ -412,6 +412,8 @@ function TransferPrompts({
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  // State updates land on the next render, so a second press in the same frame would save twice.
+  const busy = useRef(false);
   const copy = async (): Promise<void> => {
     try {
       await copyText(exportPrompts(state.doc.values));
@@ -421,15 +423,18 @@ function TransferPrompts({
     }
   };
   const runImport = async (replace: boolean): Promise<void> => {
+    if (busy.current) return;
     const parsed = parseImport(text);
     if ("error" in parsed) {
       setError(parsed.error);
       return;
     }
     setError(null);
+    busy.current = true;
     setImporting(true);
     const edit = importPrompts(parsed.prompts, replace);
     const result = await store.save(edit);
+    busy.current = false;
     setImporting(false);
     if (result === "saved") {
       setText("");
@@ -458,7 +463,10 @@ function TransferPrompts({
         label="Import"
         hint="Add or replace prompts with ones copied on another host."
         actionLabel="Import…"
-        onPress={() => setOpen(true)}
+        onPress={() => {
+          setError(null);
+          setOpen(true);
+        }}
       />
       <Modal title="Import quick prompts" open={open} onOpenChange={setOpen}>
         <Modal.Content>
