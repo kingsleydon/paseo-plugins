@@ -1,6 +1,6 @@
 {
   "name": "paseo-quick-prompts",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Saved prompts as one-tap pills above every agent's composer.",
   "license": "MIT",
   "files": [

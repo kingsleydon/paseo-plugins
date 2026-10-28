@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/kingsleydon/paseo-plugins/compare/quick-prompts-v0.1.2...quick-prompts-v0.2.0) (2026-10-28)
+
+
+### Features
+
+* **quick-prompts:** export and import prompts ([#26](https://github.com/kingsleydon/paseo-plugins/issues/26)) ([8328c52](https://github.com/kingsleydon/paseo-plugins/commit/8328c527bc3441d6721fb75fb93d01d4464d9c84))
+
 ## [0.1.2](https://github.com/kingsleydon/paseo-plugins/compare/quick-prompts-v0.1.1...quick-prompts-v0.1.2) (2026-10-14)
 
 ### Documentation
