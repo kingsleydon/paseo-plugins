@@ -22,6 +22,8 @@ agent as a normal user message.
   pill** (Prompts) that lists them all with a **Manage prompts** shortcut.
 - **Settings screen** under **Settings → Plugins → paseo-quick-prompts → Quick prompts** to add, edit, reorder, and delete
   prompts and choose how they appear. Changes save automatically.
+- **Export and import.** Copy your prompts as text and paste them into Quick prompts on another
+  host, adding them to its prompts or replacing them.
 - **Prompt ideas.** A copyable prompt on the settings screen asks an agent to read your Paseo agent
   history and suggest the quick prompts you would use most.
 - **Shared per host.** Prompts are stored on the daemon and every connected app sees the same list;
@@ -67,6 +69,11 @@ edits** card with **Copy** and **Dismiss**.
 **Show prompts as** is **Separate pills** (default) or **One menu pill**. Settings saved before this
 option existed keep separate pills.
 
+**Export → Copy** copies the prompts' labels and text as JSON. **Import → Import…** opens a dialog
+to paste that text. **Add** puts the prompts after the saved ones, skipping any whose label and prompt
+are already saved; an import that would go over 20 prompts is not saved. **Replace all** replaces the
+saved prompts with the pasted ones. **Show prompts as** is not exported or changed by an import.
+
 ## How it works
 
 - The settings document (`prompts`, host scope) is registered by the daemon entry and stored by Paseo.
@@ -79,8 +86,7 @@ option existed keep separate pills.
   send settles and reports failures in a toast. A prompt is not sent to the same agent again while its
   previous send is pending.
 
-Not supported: pills in the new-agent composer, inserting text into the composer for editing, and
-import or export.
+Not supported: pills in the new-agent composer and inserting text into the composer for editing.
 
 ## Development
 
@@ -99,9 +105,10 @@ paseo plugin logs paseo-quick-prompts
 | `index.client.tsx` | App entry: settings screen and composer pills |
 | `client/pills.ts` | Keeps each agent's pills in sync with the saved prompts |
 | `client/follow.ts` | Follows the agent directory and settings changes |
-| `client/settings-screen.tsx` | Autosaving editor for the prompts and display option, and the prompt-ideas tip |
+| `client/settings-screen.tsx` | Autosaving editor for the prompts and display option, export and import, and the prompt-ideas tip |
 | `client/autosave.ts` | Save queue for the settings screen: latest values, typed drafts, the new-prompt form, conflict retry |
 | `client/edits.ts` | Prompt edits applied to the latest values |
+| `client/transfer.ts` | Export text, and parsing and applying an import |
 | `shared/prompts.ts` | Settings schema and limits |
 | `assets/` | Screenshots for this README and the plugin listing (`media` in `paseo-plugin.json`) |
 
