@@ -1,6 +1,6 @@
 import { usePaseo, useRpc, useSettings, type PluginSurfaceProps, type SettingsState } from "@getpaseo/plugin/client";
 import { copyText, Icon, useToast } from "@getpaseo/plugin/client/react-native";
-import { SettingsAction, SettingsCard, SettingsSection, SettingsSelect } from "@getpaseo/plugin/client/ui";
+import { SettingsAction, SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch } from "@getpaseo/plugin/client/ui";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   ActivityIndicator,
@@ -22,6 +22,7 @@ import {
 import { createAutosave, draftKey, orphanedDrafts, type Autosave, type AutosaveState, type Field } from "./autosave";
 import { movePrompt, setDisplay, settingsContract, type SettingsDoc } from "./edits";
 import { followPromptChanges } from "./follow";
+import { exportPrompts, importPrompts, parseImport } from "./transfer";
 
 type Settings = SettingsState<typeof quickPromptsSettings.schema>;
 type Theme = PluginSurfaceProps["theme"];
@@ -384,6 +385,96 @@ function UnsavedEdits({ state, store, styles }: { state: AutosaveState; store: A
   );
 }
 
+/** Copies the prompts as text, and adds or replaces prompts from text copied on another host. */
+function TransferPrompts({
+  state,
+  store,
+  theme,
+  styles,
+}: {
+  state: AutosaveState;
+  store: Autosave;
+  theme: Theme;
+  styles: Styles;
+}) {
+  const toast = useToast();
+  const [text, setText] = useState("");
+  const [replace, setReplace] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const copy = async (): Promise<void> => {
+    try {
+      await copyText(exportPrompts(state.doc.values));
+      toast.show("Copied", { variant: "success" });
+    } catch {
+      toast.error("Could not copy. Try again.");
+    }
+  };
+  const runImport = async (): Promise<void> => {
+    const parsed = parseImport(text);
+    if ("error" in parsed) {
+      setError(parsed.error);
+      return;
+    }
+    setError(null);
+    setImporting(true);
+    const edit = importPrompts(parsed.prompts, replace);
+    const result = await store.save(edit);
+    setImporting(false);
+    if (result === "saved") {
+      setText("");
+      toast.show(replace ? "Prompts replaced" : "Prompts imported", { variant: "success" });
+    } else if (result === "unchanged") {
+      // Adding would go over the maximum, or every prompt is already saved.
+      setError(
+        edit(store.getState().doc.values)
+          ? "These prompts are already saved."
+          : `That would be more than ${MAX_PROMPTS} quick prompts. Turn on Replace existing prompts, or delete some first.`,
+      );
+    }
+  };
+  return (
+    <SettingsCard>
+      <SettingsAction
+        label="Export"
+        hint="Copies your quick prompts as text you can import on another host."
+        actionLabel="Copy"
+        disabled={state.doc.values.prompts.length === 0}
+        onPress={() => void copy()}
+      />
+      <View style={styles.editor}>
+        <View style={styles.field}>
+          <TextInput
+            multiline
+            accessibilityLabel="Quick prompts to import"
+            value={text}
+            placeholder="Paste prompts copied with Export"
+            placeholderTextColor={theme.colors.foregroundMuted}
+            onChangeText={(value) => {
+              setText(value);
+              setError(null);
+            }}
+            style={[styles.input, { height: LINE_HEIGHT * MAX_LINES }]}
+          />
+        </View>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+      </View>
+      <SettingsSwitch
+        label="Replace existing prompts"
+        hint="When off, imported prompts are added after the ones saved here."
+        value={replace}
+        onValueChange={setReplace}
+      />
+      <SettingsAction
+        label="Import"
+        actionLabel={importing ? "Importing…" : "Import"}
+        disabled={importing || text.trim() === ""}
+        onPress={() => void runImport()}
+      />
+    </SettingsCard>
+  );
+}
+
 function FindPromptsTip({ styles }: { styles: Styles }) {
   const toast = useToast();
   const copy = async (): Promise<void> => {
@@ -540,6 +631,7 @@ function PromptLibrary({
           onValueChange={(display) => void store.save(setDisplay(display))}
         />
       </SettingsCard>
+      <TransferPrompts state={state} store={store} theme={theme} styles={styles} />
       <FindPromptsTip styles={styles} />
     </SettingsSection>
   );
