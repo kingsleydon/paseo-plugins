@@ -69,11 +69,10 @@ edits** card with **Copy** and **Dismiss**.
 **Show prompts as** is **Separate pills** (default) or **One menu pill**. Settings saved before this
 option existed keep separate pills.
 
-**Export → Copy** copies the prompts' labels and text as JSON. To import, paste that text into the
-import field and press **Import**. Prompts are added after the saved ones, skipping any whose label
-and prompt are already saved; an import that would go over 20 prompts is not saved. With **Replace existing
-prompts** on, the imported prompts replace the saved ones. **Show prompts as** is not exported or
-changed by an import.
+**Export → Copy** copies the prompts' labels and text as JSON. **Import → Import…** opens a dialog
+to paste that text. **Add** puts the prompts after the saved ones, skipping any whose label and prompt
+are already saved; an import that would go over 20 prompts is not saved. **Replace all** replaces the
+saved prompts with the pasted ones. **Show prompts as** is not exported or changed by an import.
 
 ## How it works
 

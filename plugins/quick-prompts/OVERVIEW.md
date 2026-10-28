@@ -12,7 +12,7 @@ Open **Settings → Plugins → paseo-quick-prompts → Quick prompts** to add, 
 - **Show prompts as** picks **Separate pills** (the default) or **One menu pill**. Either way, prompts follow the order of the list, on every agent that belongs to a workspace. The menu also has a **Manage prompts** item that opens the settings page.
 - With no prompts saved, each agent shows an **Add quick prompt** pill that opens the settings page.
 
-To use the same prompts on another Paseo host, press **Export → Copy**, then paste the text into the import field on the other host's settings page and press **Import**. Imported prompts are added after the existing ones, or replace them when **Replace existing prompts** is on.
+To use the same prompts on another Paseo host, press **Export → Copy**, then on the other host's settings page press **Import…**, paste the text, and choose **Add** to put the prompts after the existing ones or **Replace all** to replace them.
 
 The settings page also has a tip with a prompt you can copy and send to an agent, which reads your Paseo agent history and suggests the quick prompts you would use most.
 
