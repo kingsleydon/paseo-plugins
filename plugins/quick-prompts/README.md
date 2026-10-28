@@ -70,8 +70,8 @@ edits** card with **Copy** and **Dismiss**.
 option existed keep separate pills.
 
 **Export → Copy** copies the prompts' labels and text as JSON. To import, paste that text into the
-import field and press **Import**. Prompts are added after the saved ones, skipping any with the same
-label and prompt; an import that would go over 20 prompts is not saved. With **Replace existing
+import field and press **Import**. Prompts are added after the saved ones, skipping any whose label
+and prompt are already saved; an import that would go over 20 prompts is not saved. With **Replace existing
 prompts** on, the imported prompts replace the saved ones. **Show prompts as** is not exported or
 changed by an import.
 
