@@ -30,11 +30,6 @@ export function pillPresentation(view: RecapView | undefined, now: number): Pill
   };
 }
 
-/** A recap is on its way: worth polling closely so the pill never lingers on stale progress. */
-export function isPending(view: RecapView): boolean {
-  return view.state === "waiting" || view.state === "generating";
-}
-
 function providerLabel(provider: string): string {
   return isRecapProvider(provider) ? RECAP_PROVIDERS[provider].label : provider;
 }

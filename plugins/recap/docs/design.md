@@ -1,9 +1,7 @@
 # paseo-recap — Design
 
-Status: Implemented, not yet verified inside a running Paseo · 2026-10-07
-
 A Paseo plugin that shows a short, provider-agnostic "where things stand" recap for every agent,
-pinned outside the conversation timeline.
+with a conversation row and a composer pill. Requires Paseo 0.16.0 or later.
 
 ## 1. Summary
 
@@ -152,36 +150,40 @@ Takeaways for Paseo:
 - Automatic recaps should be conservative and switchable: Codex raised its delay from 3 to 30 min
   and added `auto_recap = false`; both Claude Code and Codex keep manual `/recap` always available.
 
-## 4. Constraints from the Paseo plugin API (0.10.3)
+## 4. Paseo plugin API
 
-Available (verified against the installed `@getpaseo/plugin` 0.10.3 types):
+Recap targets Paseo 0.16.0 or later and typechecks against SDK 0.17.5.
 
 | Need | API |
 |---|---|
-| Turn lifecycle | `server.on("agent.turn_started" \| "agent.turn_ended" \| "agent.permission_requested" \| "agent.permission_resolved" \| "agent.archived")` |
-| Conversation and live status | `paseo.agents.ref(id).timeline.refetch({ direction: "tail", projection: "canonical" })`. `agent.turn_ended.timeline` is always empty since Paseo 0.13, so it is not used. |
+| Turn lifecycle | `server.addHook` with `agent.turn.before`, `agent.turn.after`, `agent.permission.before`, `agent.permission.after`, and `agent.archive.after` |
+| Conversation and live status | `paseo.agents.ref(id).timeline.refetch({ direction: "tail", projection: "canonical" })` supplies timeline items and the current agent snapshot |
+| Agent recap storage | `paseo.agents.list()` supplies metadata in paged snapshots. `paseo.agents.ref(id).setMetadata()` writes the recap key. |
 | Daemon config (metadata model order) | `paseo.config.get()` → `metadataGeneration.providers`, `providers.<id>` |
 | Plan usage per provider | `paseo.providers.listUsage()` → `windows[].usedPct` |
 | Backend calls from UI | `defineRpc` + `server.handle` + `useRpc` / `client.rpc` |
+| Live recap changes | `defineSubscription` + `server.handle` + `client.subscribe` |
+| CLI execution | `spawnProcess` and `terminateProcess` from `@getpaseo/plugin/server` |
 | Recap in the conversation | `paseo.agents.ref(id).timeline.append({ type: "plugin", … })` + `client.addTimelineRenderer` |
 | Per-agent UI above the composer | `client.addComposerPill({ workspaceId, agentId, button })` with popover |
-| Manual trigger | `client.addSlashCommand({ name: "recap", context: "agent" })` |
+| Manual trigger | `client.addSlashCommand({ name: "paseo-recap", context: "agent" })` |
 | Settings | `server.registerSettings` + `client.addSettingsScreen` + `useSettings` |
 
-Missing (drives design choices and upstream asks in §8):
+Design constraints shape the integration and the upstream asks in §8.
 
-- No plugin access to Paseo's one-shot metadata-generation call; plugins cannot create `internal`
-  utility agents. → CLI adapters (§5.6).
-- No `agent.closed` event in 0.10.3; only archive. → child-block timeout, live status on manual
-  recaps, 30-day retention.
+- Paseo supplies its API through hook and request contexts. Recap uses the first context to load
+  saved recaps and reuses the connection for timers.
+- Paseo's one-shot metadata-generation call is unavailable to plugins. On 0.17.5, a Claude
+  background agent ignored the structured-output schema and Codex's read-only mode still allowed
+  tool execution. Recap uses the CLI adapters in §5.6.
 - No user presence/focus or composer-draft signal on the daemon. → idle time only.
 - No slot above the timeline or in the agent header; composer pills are one line. → conversation
   line + composer pill.
 - Plugin timeline rows live in the daemon's memory only. → lines disappear after a daemon restart;
   the stored recap and the pill remain.
 - No access to provider-native recap events (OMP `recap_update`).
-- `agent.turn_ended` fires only for live turns, not imports/resumes, and carries no conversation. → every
-  recap, automatic or manual, fetches the timeline and live status right before generating.
+- `agent.turn.after` reports live turn outcomes. Automatic and manual recaps fetch the timeline and
+  live status when generation starts.
 
 ## 5. Design
 
@@ -191,36 +193,35 @@ Missing (drives design choices and upstream asks in §8):
 daemon (plugin subprocess)                                    app (every client)
 ┌──────────────────────────────────────────────┐              ┌──────────────────────────────┐
 │ lifecycle hooks                              │              │ recap line in the timeline   │
-│  turn_started / turn_ended / permission_*    │              │ composer pill per agent      │
-│  archived ─► RecapScheduler                  │     RPC      │  "Recap · 3m" → popover card │
+│  turn / permission / archive hooks          │              │ composer pill per agent      │
+│  hooks ─► RecapScheduler                     │     RPC      │  "Recap · 3m" → popover card │
 │  new recap ─► timeline.append (plugin row)   │ ◄──────────► │                              │
-│ RecapScheduler (per-agent state machine)     │ recap.get    │ /paseo-recap slash command   │
-│  ├► history.ts  timeline → bounded excerpt   │ recap.list   │ settings screen              │
-│  ├► prompt.ts   rules + JSON schema          │ recap.regen… └──────────────────────────────┘
+│ RecapScheduler (per-agent state machine)     │ recap.watch  │ /paseo-recap slash command   │
+│  ├► history.ts  timeline → bounded excerpt   │ ───────────► │ settings screen              │
+│  ├► prompt.ts   rules + JSON schema          │              └──────────────────────────────┘
 │  ├► UsageGuard  skip providers near limits   │
 │  ├► RecapGenerator  CLI adapters, queue (2)  │
-│  └► RecapStore  JSON, latest + 4 previous    │
+│  └► RecapStore  agent metadata and cache     │
 └──────────────────────────────────────────────┘
 ```
 
 ### 5.2 Per-agent state machine
 
 ```
-                      turn_ended(completed) & eligible            timer fires & still eligible
+                      agent.turn.after (completed) & eligible      timer fires & still eligible
    ┌──────┐  ─────────────────────────────────────►  ┌─────────┐ ──────────────────────────► ┌────────────┐
    │ idle │                                          │ waiting │                             │ generating │
    └──────┘  ◄── not eligible / permission request ─ └─────────┘                             └─────┬──────┘
       ▲                                                                                           │
-      │  result stored (revision unchanged) / skipped near usage limit                            │
+      │  result cached (revision unchanged) / skipped near usage limit                            │
       └───────────────────────────────────────────────────────────────────────────────────────────┘
-   turn_started (any state): revision++, abort timer and generation, mark recap stale
+   agent.turn.before (any state): revision++, abort timer and generation, mark recap stale
    failure: error → retry after 30 s (auto, < 3 failures); "no model available" → error, no retry
 ```
 
-- `revision` increments on every `turn_started`. A generation captures the revision at start and is
+- `revision` increments on every `agent.turn.before`. A generation captures the revision at start and is
   discarded if it changed (Codex, Claude Code remote, OMP re-check).
-- On `turn_started`, the stored recap is kept but marked `stale`; the UI shows it as out of date rather
-  than hiding it, so a user glancing mid-turn still sees the last known state.
+- On `agent.turn.before`, the previous recap is marked `stale` and stays visible as out of date.
 - `canceled` and `failed` outcomes do not schedule a recap; failures surface through Paseo's own UI.
 
 ### 5.3 Eligibility
@@ -230,12 +231,13 @@ Schedule an automatic recap only when all hold (defaults in parentheses):
 | Rule | Source |
 |---|---|
 | Auto-recap on (`true`) | Claude Code, Codex, OMP all have an opt-out |
+| Agent is visible (`background` is false) | Hidden helpers do not get automatic recaps |
 | Top-level agent, unless `includeSubagents` (`false`) | New — the parent's recap covers its children |
 | Last turn completed (not canceled/failed) | New |
 | ≥ `minTurns` user messages in the conversation (3) | Claude Code, Codex (both use 3) |
 | ≥ `turnsBetweenRecaps` completed turns since the last recap (1 = every turn) | Claude Code, Codex (both use 2) |
 | No pending permission or question | New — Paseo's attention UI owns that moment |
-| If `waitForSubagents` (`false`): no child agent running (for at most 10 min) | Claude Code (background work pending) |
+| If `waitForSubagents` (`false`), wait for visible child agents for up to 10 min | Claude Code (background work pending) |
 | Not compacting context | OMP |
 | Nothing in flight; < 3 failures this turn | Claude Code, Codex |
 
@@ -344,11 +346,14 @@ user config (needed for custom gateways), so user-level instructions such as rep
 Process rules:
 
 - Prompt over stdin, never argv (size, `ps` visibility).
+- The Paseo SDK's `spawnProcess` launches each CLI, including Windows command shims. Recap caps each
+  output stream at 1 MiB.
 - Each run in a fresh `mkdtemp` under a 0700 plugin temp directory, deleted afterwards; no session
   lands in the user's project history.
 - Nested-session markers (`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`) are
   stripped (Paseo #3618).
-- 60 s timeout; abort kills the whole process group.
+- Abort and the 60 s generation timeout signal the detached process group on POSIX. The SDK's
+  `terminateProcess` handles the process tree on Windows and serves as a POSIX fallback.
 - At most 2 CLIs run at once; others queue and leave the queue when aborted.
 - Missing binary, auth errors, and rate limits (`429`, "rate limit", "usage limit", "quota") mark
   that CLI unavailable for 10 min and fall through to the next candidate.
@@ -363,8 +368,9 @@ adapters.
 
 ### 5.7 Storage
 
-`$PASEO_HOME/plugin-data/paseo-recap/recaps.json` (default `~/.paseo`), mode 0600 in a 0700
-directory, written atomically (temp file + rename) and serialized.
+The `paseo-recap` agent metadata key stores a versioned record with the latest recap and up to
+four earlier recaps. Paseo owns durable storage. Recap keeps a cache and serializes metadata writes
+per agent.
 
 ```ts
 type StoredRecap = {
@@ -379,14 +385,16 @@ type StoredRecap = {
   generator: { provider: string; model: string | null };
   agent: { title: string | null; workspaceId: string | null; provider: string | null };
 };
-// file: { version: 1, agents: { [agentId]: { latest: StoredRecap, previous: StoredRecap[] } } }
+type RecapMetadata = { version: 1; latest: StoredRecap; previous: StoredRecap[] };
 ```
 
-Latest recap plus 4 previous per agent (OMP journals every recap; a short history is enough for the
-card). Removed on `agent.archived`; recaps older than 30 days are pruned on load, covering agents
-deleted without archiving. A corrupt file is logged and replaced with an empty store.
+On the first hook or client request, Recap imports legacy
+`$PASEO_HOME/plugin-data/paseo-recap/recaps.json` (default `~/.paseo`) for agents that still exist.
+It skips agents with existing recap metadata and renames the source to `recaps.json.migrated` after
+all imports succeed. The startup scan loads active agents and clears their recaps whose latest
+entry is over 30 days old. `agent.archive.after` clears the agent's recap and history.
 
-### 5.8 RPC contracts
+### 5.8 RPCs and subscriptions
 
 | Name | Input | Output |
 |---|---|---|
@@ -395,12 +403,14 @@ deleted without archiving. A corrupt file is logged and replaced with an empty s
 | `recap.regenerate` | `{ agentId }` | `RecapView` after generation; concurrent calls share one run |
 | `recap.models` | `{ generator }` | `ModelPlan`: per-provider first choice (`auto`) and the fallback order, resolved from daemon config |
 
-`state` is `idle | waiting | generating | error`. Clients poll `recap.list` every 2 s while any recap
-is waiting or generating and for 30 s after any agent update, otherwise every 30 s.
+`state` is `idle | waiting | generating | error`. The app subscribes to `recap.watch` once per host.
+The daemon sends a snapshot followed by individual `RecapView` updates. The pill and card share
+those views. If the subscription closes, the client reconnects with exponential backoff capped
+at 30 seconds. Relative age is refreshed locally.
 
 ### 5.9 UI
 
-Conversation line (plugin timeline row `recap`, appended by the daemon when a recap is stored): a
+Conversation line (plugin timeline row `recap`, appended by the daemon after generation): a
 `ScrollText` icon, the summary, and `Next: …` on its own line, in muted 14 px text like Paseo's
 compaction marker. Each recap is a new row, so it lands after the turn it summarizes, as in Claude
 Code. Rows are display-only and kept in the daemon's memory, so they are gone after a daemon restart.
@@ -440,7 +450,7 @@ Number and model fields validate as you type, show the error inline, and save 60
 valid keystroke. Model ids must match `^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$` (≤ 200 chars) because they
 become a CLI argument; the schema enforces the same rule on the daemon.
 
-Paseo's plugin API exposes no i18n, so UI strings are English; recap text follows the user's language.
+Recap's UI strings are English. Recap text follows the user's language.
 
 ### 5.10 Cost
 
@@ -455,22 +465,20 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
   the models Paseo would use for metadata generation receive it, the trust boundary Paseo already
   uses for titles and commit messages.
 - Only user and assistant text is sent; tool output (file contents, command output) is not.
-- Prompt injection: the conversation is framed as data, generators have no tools (Claude `--tools ""`,
-  Codex read-only sandbox with the user's own Codex configuration, OpenCode `plan` agent with
-  permissions rejected), output is
-  schema-validated and rendered as plain text.
-- No secrets in plugin config; CLIs use their existing logins. Recaps are stored 0600 under the
-  user's Paseo home, never in a workspace.
+- The prompt frames the conversation as data. Claude runs with `--tools ""`. Codex runs in its
+  read-only sandbox with the user's configuration, including configured MCP servers. OpenCode
+  uses its read-only `plan` agent. Recap validates model output and renders it as plain text.
+- The CLIs use their existing logins. Paseo persists recaps on the agent, outside the workspace.
 - The plugin is unsandboxed daemon code, as every Paseo plugin; the README says so.
 
 ### 5.12 Edge cases compared
 
 | Situation | Claude Code | Codex | OMP | paseo-recap |
 |---|---|---|---|---|
-| User replies during the wait | Focus regained aborts | Turn change discards | Activity aborts | `turn_started` aborts timer and generation |
+| User replies during the wait | Focus regained aborts | Turn change discards | Activity aborts | `agent.turn.before` aborts timer and generation |
 | Result lands after a new turn started | Remote: dropped | Discarded | Re-check after reply | Discarded (revision check) |
 | Draft text in the composer | Skip | — | Skip | Not visible to daemon plugins; a reply aborts anyway |
-| Background agents/workflows running | Skip | — | — | Recap anyway; optional wait (`waitForSubagents`, ≤ 10 min) |
+| Background agents/workflows running | Skip | — | — | Skip automatic recaps for background agents. Optional wait applies to visible subagents. |
 | Context compaction in progress | — | — | Skip | Skip |
 | Pending permission or question | — | — | — | Skip; re-armed when cleared while idle |
 | Canceled or failed turn | — | — | — | No recap; existing one stays, marked out of date |
@@ -484,13 +492,13 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
 | Turns without a new user message | Counts user messages | Counts completed turns | — | Counts completed turns |
 | Imported / resumed session | — | — | `latestRecap` on reconnect | Manual `/paseo-recap` fetches the timeline |
 | Missed turn-ended event | — | — | — | Manual recap trusts live daemon status |
-| Agent deleted without archive | — | — | — | Pruned after 30 days |
+| Agent deleted without archive | — | — | — | Paseo removes the agent and its metadata |
 | Daemon / plugin restart | — | — | Recap journal persists | Recaps persist; in-flight lost; next completed turn recaps |
 | Manual request while generating | — | "Already generating" | — | Joins the in-flight run |
 | Manual request on empty session | — | "No conversation" | — | "There is no conversation to recap yet." |
 | Opt-out | Setting / env | `auto_recap = false` (manual stays) | `recap.enabled` | `autoRecap = false` (manual stays) |
 | Recap enters model context | No | No | No | No |
-| Side effects of generating | Forked request, no tools | Temporary thread | Ephemeral turn | No tools, no hooks/notify, no saved session |
+| Side effects of generating | Forked request, no tools | Temporary thread | Ephemeral turn | One-shot CLI invocation with provider-specific isolation and cleanup (§5.6) |
 
 ## 6. Failure modes
 
@@ -501,21 +509,24 @@ riding the parent's prompt cache; a plugin cannot, which is why a Paseo-native c
 | Timeout (60 s) / invalid JSON | Failure; auto retries after 30 s, up to 3 per turn |
 | Turn starts mid-generation | Process group killed, result discarded |
 | Usage report unavailable | Ignored; recaps proceed |
-| Store write fails | Logged; in-memory state continues |
-| Corrupt store file | Logged; starts empty |
-| Daemon restart | Store reloads; in-flight work lost; next completed turn recaps |
-| Plugin reload / disable | Hooks unsubscribed, timers cleared, generations aborted |
+| Startup scan or migration fails | Recap logs the error and serves current in-memory data. A background retry starts at 1 second and backs off to at most 30 seconds. Recovered recaps are pushed to active subscribers. |
+| Metadata write fails | Recap logs the error and retains the result in memory. It publishes the timeline row and streams the view without retrying the CLI. |
+| Corrupt legacy file | Recap logs the error, leaves the file in place, and loads existing agent metadata. |
+| Subscription closes | The app retries with bounded backoff and receives a fresh snapshot. |
+| Daemon restart | Recap reloads saved metadata. In-flight work and memory-only recaps are lost. The next eligible turn generates a recap. |
+| Plugin reload / disable | Recap unregisters hooks, clears timers, and aborts generations. |
 
 ## 7. Testing
 
-- Unit (vitest, 79 tests): history grouping, budgets, excerpting, trimming, todo/goal hints;
+- Unit tests cover history grouping, budgets, excerpting, trimming, todo/goal hints,
   prompt rendering and output parsing; candidate ordering, CLI arguments, OpenCode event parsing and
   session cleanup, queueing, failure classification, process abort/timeout; usage guard; store
-  persistence, history, pruning; scheduler state machine with fake timers for every row in §5.12
-  that applies, including showing each stored recap in the conversation; pill formatting.
+  migration, history, retention, and persistence failures. They also cover lifecycle registration,
+  scheduling, publishing, subscription recovery, and pill formatting.
 - Real CLI (`RECAP_E2E=1`): one recap each from Claude Haiku and Codex GPT-6-Luna.
-- Not yet verified: the plugin inside a running Paseo (pill, popover, surface, settings screen,
-  mobile layout, light/dark themes, Lucide icon names, `PASEO_HOME` in the plugin process).
+- Verified on the local Paseo 0.17.5 daemon for the SDK migration. Legacy history appeared in the
+  card, manual regeneration updated the pill and appended a timeline row, and regeneration
+  refused a running agent.
 
 ## 8. Upstream asks (Paseo)
 
@@ -529,20 +540,17 @@ Open a Discussion (feature requests are not accepted as issues) for:
    (`agent.recap`). The plugin would prefer native recaps when present.
 4. **Presence and draft signals** (last viewed per agent, composer draft present) to match the "away"
    and "mid-thought" semantics of Claude Code and Codex.
-5. **`agent.closed` in the stable plugin API** (it exists on `main`) and a plugin data directory
-   convention.
 
 ## 9. Milestones
 
 1. M0 — Scheduler, history builder, Claude/Codex adapters, store, composer pill + popover, `/paseo-recap`. ✅
 2. M1 — Settings screen, OpenCode adapter, agent-first provider order, usage guard, edge cases. ✅
 3. M2 — Recap history; recap line in the conversation (replaced the Recaps surface). ✅
-4. M3 — Verify in a running Paseo; upstream Discussion; publish to paseo-cafe.
-5. Later — switch to `paseo.generate()` / native recaps when available; per-workspace recap.
+4. M3 — SDK 0.17 upgrade, metadata migration, and live subscription verification. ✅
+5. Later — switch to `paseo.generate()` or native recaps when available, and explore per-workspace recaps.
 
 ## 10. Open questions
 
-- Where should plugin-owned data live by Paseo convention? (Using `$PASEO_HOME/plugin-data/<id>`.)
 - Push notification with the recap when a long run finishes?
 - Per-workspace recap ("what changed across these 4 agents"), built from per-agent recaps.
 - "Send next action" from the card once Paseo exposes composer prefill to plugins.
@@ -550,7 +558,7 @@ Open a Discussion (feature requests are not accepted as issues) for:
 ## 11. Glossary
 
 - **Recap** — user-facing status summary, outside model context.
-- **Revision** — counter incremented on each `turn_started`; used to detect staleness.
+- **Revision** — counter incremented on each `agent.turn.before` to detect staleness.
 - **Exchange** — one user message and the agent output that follows it.
 
 ## 12. Sources

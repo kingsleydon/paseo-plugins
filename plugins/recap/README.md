@@ -20,15 +20,14 @@ OpenCode, OMP, Pi, and custom agents.
   metadata generation models, then Paseo's small models that are installed, such as Claude Haiku.
   Never the agent's large model. Or choose any Claude, Codex, or OpenCode model; the settings screen
   shows exactly which models will run.
-- **Quiet and cheap.** About 40 words, from recent text only. Skips canceled turns, pending
-  permissions, context compaction, and providers near their usage limit. ~3 s and ~$0.002 per recap
-  with Claude Haiku.
+- **Quiet and cheap.** About 40 words, from recent text only. Skips background agents, canceled
+  turns, pending permissions, context compaction, and providers near their usage limit.
 
 <p align="center"><img src="docs/images/recap-card.png" width="420" alt="The Recap card, opened from the pill, with the summary, the next step, and Regenerate"></p>
 
 ## Requirements
 
-- Paseo **0.10.3** or later, with plugins enabled (**Settings → Plugins → Enable plugins**, or
+- Paseo **0.16.0** or later, with plugins enabled (**Settings → Plugins → Enable plugins**, or
   `"pluginsEnabled": true` in `~/.paseo/config.json`)
 - At least one of the `claude`, `codex`, or `opencode` CLIs on the daemon's `PATH`, logged in
 
@@ -58,7 +57,7 @@ you type.
 | Wait after a turn (seconds) | 10 | Quiet time before a recap; replying sooner skips that turn (0–3600) |
 | Start after (messages) | 3 | Your messages before an agent's first recap, as in Claude Code (1–50) |
 | Recent exchanges to read | 8 | Your messages and the replies a recap reads, within ~8,000 tokens (1–100) |
-| Recap subagents | Off | Also recap agents started by other agents |
+| Recap subagents | Off | Also recap visible agents started by other agents |
 | Wait for subagents | Off | Hold an agent's recap while its subagents run, up to 10 minutes |
 | Recap model | Same as agent | Same as agent, Metadata model, or Claude / Codex / OpenCode with any model id |
 
@@ -68,9 +67,9 @@ you type.
    the recent user and assistant text and short error messages (up to 300 characters each), never
    tool output, file contents, or reasoning, and asks a local CLI for a structured
    `{ summary, next_action }` recap.
-2. The recap is stored under `$PASEO_HOME/plugin-data/paseo-recap/` and appended to the
-   conversation as a plugin row. A new turn cancels a pending recap and marks the last one out of
-   date.
+2. The latest recap and up to four earlier recaps are saved in the agent's Paseo metadata. The
+   plugin appends a row to the conversation and pushes changes to the pill and the card. A new turn
+   cancels a pending recap and marks the last one out of date.
 3. CLIs run one-shot in a temporary directory with your existing login. Claude and Codex save no
    session; OpenCode's session is deleted right after the run (logged if that fails).
    At most two run at once; a CLI that is missing, logged out, or rate limited is skipped for ten
@@ -82,8 +81,8 @@ you type.
 | `codex` | `codex exec --ephemeral --sandbox read-only --output-schema … --disable hooks`, low reasoning effort, with your Codex configuration |
 | `opencode` | 1.x: `opencode run --pure --agent plan --format json`; 2.x: `opencode run --standalone --agent plan --format json`; the session is deleted afterwards, also with `--standalone` on 2.x |
 
-See [docs/design.md](docs/design.md) for the full design, edge cases, and a comparison with Claude
-Code, Codex, and OMP.
+See [docs/design.md](docs/design.md) for the original design and its comparison with Claude Code,
+Codex, and OMP.
 
 ## Privacy and security
 
@@ -97,8 +96,10 @@ Code, Codex, and OMP.
   `plan` agent, which rejects permission requests. OpenCode 1.x uses `--pure`; 2.x has no equivalent,
   so OpenCode plugins load. On 2.x, both the run and session deletion use `--standalone` to avoid a
   persistent background service.
-- Recaps are stored with owner-only permissions, kept for 30 days, and deleted when the agent is
-  archived. Recap rows in the conversation live in daemon memory and are gone after a restart.
+- Archiving an agent clears its saved recap. At startup, Recap clears active agents' recaps whose
+  latest entry is more than 30 days old. It imports the previous version's
+  `$PASEO_HOME/plugin-data/paseo-recap/recaps.json` for agents that still exist and renames the file
+  to `recaps.json.migrated`. Conversation rows live in daemon memory and disappear after a restart.
 - Like every Paseo plugin, this is trusted code that runs unsandboxed on the daemon host.
 
 ## Development
@@ -115,14 +116,14 @@ paseo plugin logs paseo-recap
 
 | Path | Contents |
 |---|---|
-| `index.server.ts` | Daemon entry: lifecycle hooks, RPCs, timeline rows |
+| `index.server.ts` | Daemon entry: lifecycle hooks, RPCs, recap subscription, timeline rows |
 | `index.client.tsx` | App entry: recap line, pill, settings screen, `/paseo-recap` |
 | `server/scheduler.ts` | Per-agent state machine: when to recap |
 | `server/history.ts`, `server/prompt.ts` | What a recap reads and the prompt |
 | `server/models.ts`, `server/generators.ts`, `server/cli.ts`, `server/process.ts` | Which model runs, queue and fallback, per-CLI arguments, process runner |
 | `server/store.ts`, `server/usage.ts` | Recap storage, usage-limit guard |
 | `client/` | Recap line, pill and card, settings screen |
-| `shared/recap.ts` | Providers, settings schema, recap types, RPC contracts |
+| `shared/recap.ts` | Providers, settings schema, recap types, RPC and subscription contracts |
 
 ## Releasing
 

@@ -1,17 +1,11 @@
 import type { PluginButtonContentProps, PluginHostProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
-import { Icon } from "@getpaseo/plugin/client/react-native";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, type ReactNode } from "react";
+import { Icon } from "@getpaseo/plugin/client/ui";
+import { useMutation } from "@tanstack/react-query";
+import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { recapGetRpc, recapRegenerateRpc, type RecapView, type StoredRecap } from "../shared/recap";
+import { recapRegenerateRpc, type RecapView, type StoredRecap } from "../shared/recap";
 import { relativeTime } from "./format";
-
-const GENERATING_POLL_MS = 2_000;
-
-function recapQueryKey(agentId: string) {
-  return ["paseo-recap", "recap", agentId] as const;
-}
 
 type Theme = PluginHostProps["theme"];
 
@@ -95,10 +89,9 @@ function RecapBody({
 
 /** What the card needs from the pills that open it. */
 export interface RecapPopoverSource {
-  /** The pill's latest view of an agent's recap, so the card opens at its full size. */
-  cachedView(agentId: string): RecapView | undefined;
-  /** Reports a manual recap request, so the pill can show its progress. */
-  track<T>(agentId: string, request: Promise<T>): Promise<T>;
+  /** Undefined while the first snapshot is loading. Null when there is no recap. */
+  getView(agentId: string): RecapView | null | undefined;
+  subscribe(listener: () => void): () => void;
 }
 
 export function makeRecapPopover(source: RecapPopoverSource) {
@@ -114,34 +107,23 @@ function RecapCard({
   agentId,
   source,
 }: PluginButtonContentProps & { agentId: string; source: RecapPopoverSource }) {
-  const getRecap = useRpc(recapGetRpc);
   const regenerateRecap = useRpc(recapRegenerateRpc);
-  const queryClient = useQueryClient();
   const [showEarlier, setShowEarlier] = useState(false);
   const styles = useRecapStyles(theme);
-  const query = useQuery({
-    queryKey: recapQueryKey(agentId),
-    queryFn: () => getRecap({ agentId }),
-    // Paseo sizes a popover to its first render; starting from the pill's data avoids opening at
-    // the size of a loading spinner and clipping the recap that arrives a moment later.
-    initialData: () => source.cachedView(agentId),
-    refetchInterval: (current) =>
-      current.state.data?.state === "generating" ? GENERATING_POLL_MS : false,
-  });
+  const getView = () => source.getView(agentId);
+  const view = useSyncExternalStore(source.subscribe, getView, getView);
+  const loading = view === undefined;
   const regenerate = useMutation({
-    // The RPC resolves only after generation finishes; `regenerate.isPending` shows progress here.
-    mutationFn: () => source.track(agentId, regenerateRecap({ agentId })),
-    onSettled: (view) => {
-      if (view) queryClient.setQueryData(recapQueryKey(agentId), view);
-      else void query.refetch();
+    async mutationFn() {
+      const result = await regenerateRecap({ agentId });
+      if (result.error) throw new Error(result.error);
     },
   });
 
-  const view = query.data;
   const recap = view?.recap ?? null;
   const previous = view?.previous ?? [];
   const generating = view?.state === "generating" || regenerate.isPending;
-  const error = query.error || regenerate.error ? "Could not load the recap." : (view?.error ?? null);
+  const error = view?.error ?? (regenerate.error ? "Could not generate a recap." : null);
 
   const generateButton = (
     <Pressable
@@ -180,7 +162,7 @@ function RecapCard({
 
   return (
     <View style={{ gap: 12, maxWidth: layout.compact ? undefined : 400 }}>
-      {query.isPending ? <ActivityIndicator color={theme.colors.foregroundMuted} /> : null}
+      {loading ? <ActivityIndicator color={theme.colors.foregroundMuted} /> : null}
       {recap ? (
         // With a recap shown, regenerating is secondary: quiet buttons on the metadata line.
         <RecapBody
@@ -196,7 +178,7 @@ function RecapCard({
       ) : (
         // Without one, Generate is the card's main action.
         <>
-          {!query.isPending && !generating ? (
+          {!loading && !generating ? (
             <Text style={styles.meta}>No recap yet. One appears after this agent's next turn, or generate it now.</Text>
           ) : null}
           <View style={styles.row}>{generateButton}</View>

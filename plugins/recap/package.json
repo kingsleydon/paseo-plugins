@@ -19,9 +19,9 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@getpaseo/client": "^0.10.3",
-    "@getpaseo/plugin": "0.10.3",
-    "@getpaseo/protocol": "^0.10.3",
+    "@getpaseo/client": "0.17.5",
+    "@getpaseo/plugin": "0.17.5",
+    "@getpaseo/protocol": "0.17.5",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^22.20.5",
     "@types/react": "~19.2.0",

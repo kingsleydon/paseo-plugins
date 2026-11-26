@@ -7,6 +7,7 @@ import { RecapGenerator } from "./server/generators";
 import { describeModelPlan, resolveCandidates, type GeneratorInputs } from "./server/models";
 import type { PaseoApi } from "./server/paseo-types";
 import { runProcess } from "./server/process";
+import { createRecapStream } from "./server/recap-stream";
 import { RecapScheduler } from "./server/scheduler";
 import { RecapStore } from "./server/store";
 import { UsageGuard } from "./server/usage";
@@ -17,11 +18,14 @@ import {
   recapModelPlanRpc,
   recapRegenerateRpc,
   recapSettings,
+  recapSubscription,
   type RecapSettings,
   type RecapTimelineData,
 } from "./shared/recap";
 
 const TIMELINE_FETCH_LIMIT = 500;
+const INITIAL_LOAD_RETRY_MS = 1_000;
+const MAX_LOAD_RETRY_MS = 30_000;
 
 function log(message: string, detail?: unknown): void {
   if (detail === undefined) console.error(`[paseo-recap] ${message}`);
@@ -35,7 +39,8 @@ function storePath(): string {
 
 export default function contribute(server: PluginServerContext) {
   const settings = server.registerSettings(recapSettings);
-  const store = new RecapStore(storePath(), log);
+  const store = new RecapStore(() => requirePaseo().agents, storePath(), log);
+  const stream = createRecapStream();
   const tempRoot = join(tmpdir(), "paseo-recap");
   const generator = new RecapGenerator({ runProcess, env: process.env, tempRoot, now: Date.now, log });
   const usage = new UsageGuard(
@@ -68,6 +73,7 @@ export default function contribute(server: PluginServerContext) {
   const scheduler = new RecapScheduler({
     store,
     readSettings,
+    onChange: stream.update,
     log,
     async generate(prompt, signal, { agentProvider, trigger }) {
       const [inputs, current] = await Promise.all([readGeneratorInputs(requirePaseo()), readSettings()]);
@@ -108,53 +114,77 @@ export default function contribute(server: PluginServerContext) {
     },
   });
 
-  const ready = Promise.all([
-    store.load(),
-    mkdir(tempRoot, { recursive: true, mode: 0o700 }),
-  ]).catch((error: unknown) => log("startup failed", errorMessage(error)));
+  let ready: Promise<void> | undefined;
+  let loadRetry: ReturnType<typeof setTimeout> | undefined;
+  let retryDelay = INITIAL_LOAD_RETRY_MS;
+  let disposed = false;
+  const loadStore = async (): Promise<void> => {
+    try {
+      const restored = await store.load();
+      if (!disposed) {
+        for (const agentId of restored) stream.update(scheduler.view(agentId));
+      }
+    } catch (error) {
+      log("could not load saved recaps", errorMessage(error));
+      if (disposed) return;
+      loadRetry = setTimeout(() => void loadStore(), retryDelay);
+      retryDelay = Math.min(retryDelay * 2, MAX_LOAD_RETRY_MS);
+    }
+  };
+  const initialize = (api: PaseoApi): Promise<void> => {
+    paseo = api;
+    // The SDK supplies the connection with the first hook or client request.
+    ready ??= (async () => {
+      await mkdir(tempRoot, { recursive: true, mode: 0o700 }).catch((error: unknown) => {
+        log("could not create recap temp directory", errorMessage(error));
+      });
+      if (!disposed) await loadStore();
+    })();
+    return ready;
+  };
 
   const unsubscribers = [
-    server.on("agent.turn_started", async ({ agent }, context) => {
-      paseo = context.paseo;
-      await ready;
+    server.addHook("agent.turn.before", async ({ agent }, { paseo }) => {
+      await initialize(paseo);
       scheduler.turnStarted(agent);
     }),
-    server.on("agent.turn_ended", async ({ agent, outcome }, context) => {
-      paseo = context.paseo;
-      await ready;
+    server.addHook("agent.turn.after", async ({ agent, outcome }, { paseo }) => {
+      await initialize(paseo);
       await scheduler.turnEnded(agent, outcome);
     }),
-    server.on("agent.permission_requested", ({ agent, request }) => {
+    server.addHook("agent.permission.before", async ({ agent, request }, { paseo }) => {
+      await initialize(paseo);
       scheduler.permissionRequested(agent, request.id);
     }),
-    server.on("agent.permission_resolved", async ({ agent, requestId }) => {
-      await ready;
+    server.addHook("agent.permission.after", async ({ agent, requestId }, { paseo }) => {
+      await initialize(paseo);
       await scheduler.permissionResolved(agent, requestId);
     }),
-    server.on("agent.archived", async ({ agent }) => {
-      await ready;
+    server.addHook("agent.archive.after", async ({ agent }, { paseo }) => {
+      await initialize(paseo);
       await scheduler.archived(agent);
     }),
   ];
 
-  server.handle(recapGetRpc, async ({ agentId }, context) => {
-    paseo = context.paseo;
-    await ready;
+  server.handle(recapGetRpc, async ({ agentId }, { paseo }) => {
+    await initialize(paseo);
     return scheduler.view(agentId);
   });
-  server.handle(recapListRpc, async (_input, context) => {
-    paseo = context.paseo;
-    await ready;
+  server.handle(recapListRpc, async (_input, { paseo }) => {
+    await initialize(paseo);
     return { recaps: scheduler.list() };
   });
-  server.handle(recapModelPlanRpc, async ({ generator }, context) => {
-    paseo = context.paseo;
-    return describeModelPlan(generator, await readGeneratorInputs(context.paseo));
+  server.handle(recapSubscription, async (_input, { paseo, push, signal }) => {
+    await initialize(paseo);
+    await stream.subscribe(() => scheduler.list(), push, signal);
   });
-  server.handle(recapRegenerateRpc, async ({ agentId }, context) => {
-    paseo = context.paseo;
-    await ready;
+  server.handle(recapModelPlanRpc, async ({ generator }, { paseo }) => {
+    await initialize(paseo);
+    return describeModelPlan(generator, await readGeneratorInputs(paseo));
+  });
+  server.handle(recapRegenerateRpc, async ({ agentId }, { paseo }) => {
     try {
+      await initialize(paseo);
       return await scheduler.regenerate(agentId);
     } catch (error) {
       log(`manual recap failed for agent ${agentId}`, errorMessage(error));
@@ -163,6 +193,8 @@ export default function contribute(server: PluginServerContext) {
   });
 
   return () => {
+    disposed = true;
+    clearTimeout(loadRetry);
     for (const unsubscribe of unsubscribers) unsubscribe();
     scheduler.dispose();
   };
