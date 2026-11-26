@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAutosave, orphanedDrafts, type SettingsIo } from "../client/autosave";
-import { movePrompt, setDisplay, updatePrompt, type SettingsDoc } from "../client/edits";
+import { movePrompt, setDisplay, setSendRightAway, updatePrompt, type SettingsDoc } from "../client/edits";
 import { quickPromptsSettings, type QuickPromptsSettings } from "../shared/prompts";
 
 const prompt = (id: string, label = `Label ${id}`, text = `Text ${id}`) => ({ id, label, text });
-const values = (...ids: string[]): QuickPromptsSettings => ({ prompts: ids.map((id) => prompt(id)), display: "pills" });
+const values = (...ids: string[]): QuickPromptsSettings => ({ prompts: ids.map((id) => prompt(id)), display: "pills", sendRightAway: true });
 /** Like Paseo, a revision is a hash of the content, so the same values always have the same revision. */
 const doc = (settings: QuickPromptsSettings): SettingsDoc => ({ values: settings, revision: JSON.stringify(settings) });
 /** Lets every queued promise callback run. */
@@ -56,6 +56,9 @@ describe("createAutosave", () => {
     const { host, store, state } = setup(values("a"));
     await store.save(setDisplay("menu"));
     expect(state().doc.values.display).toBe("menu");
+    await store.save(setSendRightAway(false));
+    expect(state().doc.values).toMatchObject({ display: "menu", sendRightAway: false });
+    expect(host.stored.values).toMatchObject({ display: "menu", sendRightAway: false });
 
     host.other(values("a"));
     store.refresh();

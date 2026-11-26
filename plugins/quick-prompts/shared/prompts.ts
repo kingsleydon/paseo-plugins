@@ -41,6 +41,9 @@ export const quickPromptsSettings = defineSettings({
     // Documents saved before this field existed, or with a display this version does not know,
     // keep separate pills and their prompts.
     display: z.enum(PROMPT_DISPLAYS).catch("pills"),
+    // Whether a prompt pill sends its prompt or inserts it into the composer. Documents saved
+    // before this field existed keep sending.
+    sendRightAway: z.boolean().catch(true),
   }),
 });
 

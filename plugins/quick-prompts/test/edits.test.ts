@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { addPrompt, applyEdit, deletePrompt, movePrompt, setDisplay, updatePrompt } from "../client/edits";
+import { addPrompt, applyEdit, deletePrompt, movePrompt, setDisplay, setSendRightAway, updatePrompt } from "../client/edits";
 import { MAX_PROMPTS, type QuickPromptsSettings } from "../shared/prompts";
 
 const prompt = (id: string, label = `Label ${id}`, text = `Text ${id}`) => ({ id, label, text });
-const values = (...ids: string[]): QuickPromptsSettings => ({ prompts: ids.map((id) => prompt(id)), display: "pills" });
+const values = (...ids: string[]): QuickPromptsSettings => ({ prompts: ids.map((id) => prompt(id)), display: "pills", sendRightAway: true });
 const ids = (settings: QuickPromptsSettings | null) => settings?.prompts.map(({ id }) => id);
 
 describe("edits", () => {
@@ -13,6 +13,7 @@ describe("edits", () => {
     expect(ids(applyEdit(movePrompt("b", 1), values("a", "b", "c")))).toEqual(["a", "c", "b"]);
     expect(ids(applyEdit(deletePrompt("a"), values("a", "b")))).toEqual(["b"]);
     expect(applyEdit(setDisplay("menu"), values("a"))?.display).toBe("menu");
+    expect(applyEdit(setSendRightAway(false), values("a"))?.sendRightAway).toBe(false);
   });
 
   it("do not apply to a missing prompt, past either end, or over the maximum", () => {

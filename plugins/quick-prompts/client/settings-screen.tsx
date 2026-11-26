@@ -8,6 +8,7 @@ import {
   SettingsCard,
   SettingsSection,
   SettingsSelect,
+  SettingsSwitch,
   useToast,
 } from "@getpaseo/plugin/client/ui";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -29,7 +30,7 @@ import {
   type QuickPrompt,
 } from "../shared/prompts";
 import { createAutosave, draftKey, orphanedDrafts, type Autosave, type AutosaveState, type Field } from "./autosave";
-import { movePrompt, setDisplay, settingsContract, type SettingsDoc } from "./edits";
+import { movePrompt, setDisplay, setSendRightAway, settingsContract, type SettingsDoc } from "./edits";
 import { followPromptChanges } from "./follow";
 import { exportPrompts, importPrompts, parseImport } from "./transfer";
 
@@ -680,6 +681,12 @@ function PromptLibrary({
           value={state.doc.values.display}
           options={DISPLAY_OPTIONS}
           onValueChange={(display) => void store.save(setDisplay(display))}
+        />
+        <SettingsSwitch
+          label="Send right away"
+          hint="On: a prompt is sent when you tap it. Off: it goes into the composer so you can edit it first."
+          value={state.doc.values.sendRightAway}
+          onValueChange={(sendRightAway) => void store.save(setSendRightAway(sendRightAway))}
         />
       </SettingsCard>
       <TransferPrompts state={state} store={store} theme={theme} styles={styles} />

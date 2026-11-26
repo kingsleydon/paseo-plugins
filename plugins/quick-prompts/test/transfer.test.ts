@@ -4,7 +4,7 @@ import { exportPrompts, importPrompts, parseImport } from "../client/transfer";
 import { MAX_PROMPTS, type QuickPromptsSettings } from "../shared/prompts";
 
 const prompt = (id: string, label = `Label ${id}`, text = `Text ${id}`) => ({ id, label, text });
-const values = (...ids: string[]): QuickPromptsSettings => ({ prompts: ids.map((id) => prompt(id)), display: "menu" });
+const values = (...ids: string[]): QuickPromptsSettings => ({ prompts: ids.map((id) => prompt(id)), display: "menu", sendRightAway: false });
 const contents = (settings: QuickPromptsSettings | null) => settings?.prompts.map(({ label, text }) => [label, text]);
 
 describe("transfer", () => {
@@ -14,6 +14,7 @@ describe("transfer", () => {
     const imported = applyEdit(importPrompts(parsed.prompts, true), values("x"));
     expect(contents(imported)).toEqual(contents(values("a", "b")));
     expect(imported?.display).toBe("menu");
+    expect(imported?.sendRightAway).toBe(false);
     expect(new Set(imported?.prompts.map(({ id }) => id)).size).toBe(2);
   });
 
