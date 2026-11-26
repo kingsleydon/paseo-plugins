@@ -636,7 +636,8 @@ function PromptLibrary({
     >
       <Text style={styles.intro}>
         Quick prompts appear above every agent's composer, as separate pills or in one Prompts menu. Choosing one
-        sends the prompt to that agent as your message. Changes save automatically.
+        sends the prompt to that agent, or with Send right away off, puts it in the composer. Changes save
+        automatically.
       </Text>
       <LoadProblem
         settings={settings}

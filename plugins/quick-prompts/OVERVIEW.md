@@ -1,4 +1,4 @@
-Quick prompts turns the messages you send often into pills above every agent's composer. Tap a pill and its text goes to that agent as your next message, the same as typing it and pressing send. If you prefer a tidier composer, show them all in one **Prompts** pill that opens a menu instead.
+Quick prompts turns the messages you send often into pills above every agent's composer. Tap a pill and, by default, its text goes to that agent as your next message, the same as typing it and pressing send. If you prefer a tidier composer, show them all in one **Prompts** pill that opens a menu instead.
 
 To edit a prompt before it goes out, turn off **Send right away**: tapping a pill or menu item then puts the prompt in that agent's composer at the cursor, ready for you to change and send.
 
