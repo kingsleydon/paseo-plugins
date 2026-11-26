@@ -1,4 +1,4 @@
-import { defineRpc, defineSettings } from "@getpaseo/plugin";
+import { defineRpc, defineSettings, defineSubscription } from "@getpaseo/plugin";
 import { z } from "zod";
 
 // Providers ------------------------------------------------------------------------------------
@@ -142,6 +142,16 @@ export const recapListRpc = defineRpc({
   input: z.object({}),
   output: z.object({ recaps: z.array(RecapViewSchema) }),
 });
+
+export const recapSubscription = defineSubscription({
+  name: "recap.watch",
+  input: z.object({}),
+  event: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("snapshot"), recaps: z.array(RecapViewSchema) }),
+    z.object({ type: z.literal("update"), view: RecapViewSchema }),
+  ]),
+});
+export type RecapEvent = z.output<typeof recapSubscription.event>;
 
 export const recapRegenerateRpc = defineRpc({
   name: "recap.regenerate",

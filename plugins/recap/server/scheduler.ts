@@ -40,7 +40,7 @@ export interface RecapStoreLike {
   all(): StoredRecap[];
   set(recap: StoredRecap): Promise<void>;
   markStale(agentId: string): Promise<void>;
-  delete(agentId: string): Promise<void>;
+  delete(agentId: string, metadata: PluginHookAgent["metadata"]): Promise<void>;
 }
 
 export interface SchedulerDeps {
@@ -51,6 +51,7 @@ export interface SchedulerDeps {
   fetchAgentContext(agentId: string): Promise<AgentContext>;
   /** Shows a newly stored recap in the agent's conversation. */
   publish(recap: StoredRecap): Promise<void>;
+  onChange(view: RecapView): void;
   log(message: string, detail?: unknown): void;
 }
 
@@ -62,6 +63,7 @@ interface AgentEntry {
   workspaceId: string | null;
   provider: string | null;
   title: string | null;
+  background: boolean;
   /** Incremented on every turn start; a recap is only kept for the revision it started on. */
   revision: number;
   running: boolean;
@@ -103,11 +105,17 @@ export class RecapScheduler {
     entry.pendingPermissions.clear();
     entry.lastTurnCompleted = false;
     entry.failures = 0;
-    entry.error = null;
-    entry.state = "idle";
     this.#cancel(entry);
-    void this.#deps.store.markStale(entry.id);
-    if (entry.parentAgentId) this.#entryById(entry.parentAgentId).runningChildren.add(entry.id);
+    this.#setState(entry, "idle", null);
+    const previous = this.#deps.store.get(entry.id);
+    void this.#deps.store.markStale(entry.id).then(() => {
+      if (previous !== this.#deps.store.get(entry.id)) this.#notify(entry.id);
+    }).catch((error: unknown) => {
+      this.#deps.log(`could not mark recap stale for agent ${entry.id}`, errorMessage(error));
+    });
+    if (!entry.background && entry.parentAgentId) {
+      this.#entryById(entry.parentAgentId).runningChildren.add(entry.id);
+    }
   }
 
   async turnEnded(agent: PluginHookAgent, outcome: PluginTurnOutcome): Promise<void> {
@@ -116,7 +124,7 @@ export class RecapScheduler {
     entry.runningSince = null;
     entry.lastTurnCompleted = outcome.kind === "completed";
     if (entry.lastTurnCompleted && entry.turnsSinceRecap !== null) entry.turnsSinceRecap++;
-    if (entry.parentAgentId) {
+    if (!entry.background && entry.parentAgentId) {
       const parent = this.#entryById(entry.parentAgentId);
       parent.runningChildren.delete(entry.id);
       // The parent may have been waiting only for this child.
@@ -129,7 +137,7 @@ export class RecapScheduler {
     const entry = this.#entry(agent);
     entry.pendingPermissions.add(requestId);
     this.#clearTimer(entry);
-    if (entry.state === "waiting") entry.state = "idle";
+    if (entry.state === "waiting") this.#setState(entry, "idle");
   }
 
   async permissionResolved(agent: PluginHookAgent, requestId: string): Promise<void> {
@@ -146,7 +154,8 @@ export class RecapScheduler {
       this.#entries.delete(agent.id);
     }
     if (agent.parentAgentId) this.#entries.get(agent.parentAgentId)?.runningChildren.delete(agent.id);
-    await this.#deps.store.delete(agent.id);
+    await this.#deps.store.delete(agent.id, agent.metadata);
+    this.#notify(agent.id);
   }
 
   /** Manual recap: bypasses delay, frequency, and opt-out, but never runs during a turn. */
@@ -166,8 +175,7 @@ export class RecapScheduler {
       return this.view(agentId);
     }
     this.#clearTimer(entry);
-    entry.error = null;
-    entry.state = "generating";
+    this.#setState(entry, "generating", null);
     await this.#run(entry, "manual");
     return this.view(agentId);
   }
@@ -193,6 +201,17 @@ export class RecapScheduler {
     return [...ids].map((id) => this.view(id));
   }
 
+  #notify(agentId: string): void {
+    if (!this.#disposed) this.#deps.onChange(this.view(agentId));
+  }
+
+  #setState(entry: AgentEntry, state: RecapState, error = entry.error): void {
+    if (entry.state === state && entry.error === error) return;
+    entry.state = state;
+    entry.error = error;
+    this.#notify(entry.id);
+  }
+
   dispose(): void {
     this.#disposed = true;
     for (const entry of this.#entries.values()) this.#cancel(entry);
@@ -207,7 +226,7 @@ export class RecapScheduler {
     }
     this.#clearTimer(entry);
     const revision = entry.revision;
-    entry.state = "waiting";
+    this.#setState(entry, "waiting");
     entry.timer = setTimeout(() => {
       entry.timer = null;
       void this.#fire(entry, revision);
@@ -219,7 +238,7 @@ export class RecapScheduler {
     // Re-check: settings, permissions, or children may have changed during the delay.
     const settings = await this.#deps.readSettings();
     if (!this.#eligible(entry, settings)) {
-      if (entry.state === "waiting") entry.state = entry.error ? "error" : "idle";
+      if (entry.state === "waiting") this.#setState(entry, entry.error ? "error" : "idle");
       this.#recheckAfterChildBlock(entry, settings);
       return;
     }
@@ -231,7 +250,8 @@ export class RecapScheduler {
    * event marks that deadline, so check again when it passes.
    */
   #recheckAfterChildBlock(entry: AgentEntry, settings: RecapSettings): void {
-    if (!settings.waitForSubagents || entry.timer || !this.#hasBlockingChild(entry)) return;
+    if (this.#disposed || this.#entries.get(entry.id) !== entry) return;
+    if (!settings.waitForSubagents || entry.background || entry.timer || !this.#hasBlockingChild(entry)) return;
     const now = Date.now();
     let blockEndsAt = now;
     for (const childId of entry.runningChildren) {
@@ -245,7 +265,7 @@ export class RecapScheduler {
   }
 
   #eligible(entry: AgentEntry, settings: RecapSettings): boolean {
-    if (this.#disposed || !settings.autoRecap) return false;
+    if (this.#disposed || this.#entries.get(entry.id) !== entry || entry.background || !settings.autoRecap) return false;
     if (entry.parentAgentId && !settings.includeSubagents) return false;
     if (entry.running || !entry.lastTurnCompleted || entry.inFlight) return false;
     if (entry.pendingPermissions.size > 0) return false;
@@ -268,8 +288,7 @@ export class RecapScheduler {
     const revision = entry.revision;
     const manual = trigger === "manual";
     const skip = (error: string | null) => {
-      entry.state = "idle";
-      entry.error = manual ? error : null;
+      this.#setState(entry, "idle", manual ? error : null);
     };
     try {
       const [settings, agent] = await Promise.all([
@@ -290,8 +309,7 @@ export class RecapScheduler {
       const context = { goal: entry.title, activeTask: latestActiveTask(agent.timeline) };
       const history = buildRecapHistory(agent.timeline, historyBudget(context), settings.historyExchanges);
       if (history === "") return skip("There is no conversation to recap yet.");
-      entry.state = "generating";
-      entry.error = null;
+      this.#setState(entry, "generating", null);
       const generated = await this.#deps.generate(renderPrompt(history, context), abort.signal, {
         agentProvider: entry.provider,
         trigger,
@@ -311,9 +329,10 @@ export class RecapScheduler {
         agent: { title: entry.title, workspaceId: entry.workspaceId, provider: entry.provider },
       };
       await this.#deps.store.set(recap);
+      if (abort.signal.aborted || entry.revision !== revision || this.#disposed) return;
       entry.failures = 0;
       entry.turnsSinceRecap = 0;
-      entry.state = "idle";
+      this.#setState(entry, "idle");
       await this.#deps.publish(recap).catch((error: unknown) => {
         this.#deps.log(`could not show recap for agent ${entry.id}`, errorMessage(error));
       });
@@ -321,20 +340,18 @@ export class RecapScheduler {
       if (abort.signal.aborted || entry.revision !== revision) return;
       if (error instanceof RecapSkippedError) {
         // Deliberate skip (usage limits): not a failure, nothing to retry or show.
-        entry.state = "idle";
+        this.#setState(entry, "idle");
         this.#deps.log(`recap skipped for agent ${entry.id}`, error.message);
         return;
       }
       if (error instanceof NoGeneratorError) {
         // Retrying cannot help until the user fixes their setup; stop for this turn.
         entry.failures = MAX_CONSECUTIVE_FAILURES;
-        entry.state = "error";
-        entry.error = NO_GENERATOR;
+        this.#setState(entry, "error", NO_GENERATOR);
         return;
       }
       entry.failures++;
-      entry.state = "error";
-      entry.error = GENERIC_FAILURE;
+      this.#setState(entry, "error", GENERIC_FAILURE);
       this.#deps.log(`recap failed for agent ${entry.id}`, errorMessage(error));
       // Release the in-flight slot first; eligibility rejects agents with work in flight.
       if (entry.inFlight?.abort === abort) entry.inFlight = null;
@@ -372,6 +389,7 @@ export class RecapScheduler {
     entry.workspaceId = agent.workspaceId ?? entry.workspaceId;
     entry.provider = agent.provider;
     entry.title = agent.title ?? entry.title;
+    entry.background = agent.background;
     return entry;
   }
 
@@ -384,6 +402,7 @@ export class RecapScheduler {
         workspaceId: null,
         provider: null,
         title: null,
+        background: false,
         revision: 0,
         running: false,
         runningSince: null,

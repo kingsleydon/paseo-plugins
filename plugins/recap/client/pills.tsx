@@ -5,15 +5,10 @@ import type {
   PluginClientContext,
 } from "@getpaseo/plugin/client";
 import { ActivityIndicator } from "react-native";
-import { recapListRpc, type RecapView } from "../shared/recap";
-import { isPending, pillPresentation, type PillPresentation } from "./format";
+import type { RecapEvent, RecapView } from "../shared/recap";
+import { pillPresentation, type PillPresentation } from "./format";
 import { makeRecapPopover } from "./recap-card";
-
-const TICK_MS = 2_000;
-const IDLE_POLL_MS = 30_000;
-/** After agent activity, poll every tick: a recap lands a few seconds after the idle delay. */
-const ACTIVE_WINDOW_MS = 30_000;
-const UPDATE_DEBOUNCE_MS = 1_000;
+import { subscribeToRecaps } from "./recap-subscription";
 
 /** Sized to the icon slot, as Paseo's own pills draw their loading spinner. */
 function SpinnerIcon({ size, color }: PluginButtonIconProps) {
@@ -32,14 +27,10 @@ function pillButton({
 export interface RecapPills {
   start(): void;
   stop(): void;
-  refresh(): Promise<void>;
-  /** Shows progress on an agent's pill while a manual recap request runs, then its result. */
-  track<T>(agentId: string, request: Promise<T>): Promise<T>;
 }
 
 /**
- * Keeps one composer pill per agent in sync with daemon recaps. Recaps finish after an idle delay
- * without any agent update, so the list is also polled, faster right after agent activity.
+ * Keeps composer pills and their popovers in sync over one subscription per host.
  *
  * A factory rather than a class: plugin client bundles reach Hermes (iOS, Android) without Metro's
  * transforms, and Hermes rejects class syntax (getpaseo/paseo#5783).
@@ -47,47 +38,34 @@ export interface RecapPills {
 export function createRecapPills(client: PluginClientContext): RecapPills {
   const pills = new Map<string, PluginButtonRegistration>();
   const lifetime = new AbortController();
-  let views = new Map<string, RecapView>();
-  let debounce: ReturnType<typeof setTimeout> | null = null;
-  let poll: ReturnType<typeof setInterval> | null = null;
-  let refreshing = false;
-  let lastRefreshAt = 0;
-  let activeUntil = 0;
+  const listeners = new Set<() => void>();
+  let views: Map<string, RecapView> | undefined;
+  let ageTimer: ReturnType<typeof setInterval> | undefined;
 
-  const render = (): void => {
-    const now = Date.now();
-    for (const [agentId, pill] of pills) {
-      pill.update(pillButton(pillPresentation(views.get(agentId), now)));
-    }
+  const render = (agentId: string): void => {
+    pills.get(agentId)?.update(pillButton(pillPresentation(views?.get(agentId), Date.now())));
   };
 
-  const refresh = async (): Promise<void> => {
-    if (refreshing || lifetime.signal.aborted) return;
-    refreshing = true;
-    lastRefreshAt = Date.now();
-    try {
-      const { recaps } = await client.rpc(recapListRpc, {});
-      views = new Map(recaps.map((view) => [view.agentId, view]));
-      render();
-    } catch (error) {
-      console.error("[paseo-recap] failed to load recaps", error);
-    } finally {
-      refreshing = false;
+  const update = (event: RecapEvent): void => {
+    if (event.type === "snapshot") {
+      views = new Map(event.recaps.map((view) => [view.agentId, view]));
+      for (const agentId of pills.keys()) render(agentId);
+    } else {
+      const { view } = event;
+      if (view.recap || view.state !== "idle" || view.error) views?.set(view.agentId, view);
+      else views?.delete(view.agentId);
+      render(view.agentId);
     }
+    for (const listener of listeners) listener();
   };
 
-  const track = async <T,>(agentId: string, request: Promise<T>): Promise<T> => {
-    const view = views.get(agentId) ?? { agentId, recap: null, previous: [], error: null, state: "idle" };
-    views.set(agentId, { ...view, state: "generating", error: null });
-    render();
-    try {
-      return await request;
-    } finally {
-      void refresh();
-    }
-  };
-
-  const popover = makeRecapPopover({ cachedView: (agentId) => views.get(agentId), track });
+  const popover = makeRecapPopover({
+    getView: (agentId) => views ? (views.get(agentId) ?? null) : undefined,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+  });
 
   const register = (agent: { id: string; workspaceId?: string | null }): void => {
     if (lifetime.signal.aborted || !agent.workspaceId) return;
@@ -98,7 +76,7 @@ export function createRecapPills(client: PluginClientContext): RecapPills {
       agentId: agent.id,
       button: {
         title: "Session recap",
-        ...pillButton(pillPresentation(views.get(agent.id), Date.now())),
+        ...pillButton(pillPresentation(views?.get(agent.id), Date.now())),
         behavior: { kind: "popover", Content: popover },
       },
     });
@@ -115,50 +93,41 @@ export function createRecapPills(client: PluginClientContext): RecapPills {
     pills.clear();
   };
 
-  const scheduleRefresh = (): void => {
-    if (debounce) clearTimeout(debounce);
-    debounce = setTimeout(() => {
-      debounce = null;
-      void refresh();
-    }, UPDATE_DEBOUNCE_MS);
-  };
-
   const start = (): void => {
+    subscribeToRecaps(client, update, lifetime.signal);
     client.paseo.agents
       .list({ subscribe: {}, signal: lifetime.signal })
       .then(({ subscription }) => {
+        if (lifetime.signal.aborted) return subscription.release();
         subscription.subscribe({
           snapshot: ({ entries }) => {
             removeAll();
             for (const { agent } of entries) register(agent);
-            scheduleRefresh();
           },
           update: (message) => {
             if (message.type !== "agent_update") return;
             const update = message.payload;
             if (update.kind === "remove") remove(update.agentId);
             else if (!pills.has(update.agent.id)) register(update.agent);
-            activeUntil = Date.now() + ACTIVE_WINDOW_MS;
-            scheduleRefresh();
           },
         });
       })
       .catch((error: unknown) => {
         if (!lifetime.signal.aborted) console.error("[paseo-recap] agent observation failed", error);
       });
-    poll = setInterval(() => {
-      const now = Date.now();
-      const pending = [...views.values()].some(isPending);
-      if (pending || now < activeUntil || now - lastRefreshAt >= IDLE_POLL_MS) void refresh();
-    }, TICK_MS);
+    // Keep the displayed ages current without requesting data from the daemon.
+    ageTimer = setInterval(() => {
+      for (const [agentId, view] of views ?? []) {
+        if (view.recap) render(agentId);
+      }
+    }, 60_000);
   };
 
   const stop = (): void => {
     lifetime.abort();
-    if (debounce) clearTimeout(debounce);
-    if (poll) clearInterval(poll);
+    clearInterval(ageTimer);
     removeAll();
   };
 
-  return { start, stop, refresh, track };
+  return { start, stop };
 }

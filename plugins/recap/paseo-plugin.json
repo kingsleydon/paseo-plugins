@@ -2,6 +2,6 @@
   "id": "paseo-recap",
   "description": "Writes a short recap of each agent's goal, progress, and next step after every turn, like Claude Code's session recap.",
   "requirements": {
-    "paseo": ">=0.10.3"
+    "paseo": ">=0.16.0"
   }
 }

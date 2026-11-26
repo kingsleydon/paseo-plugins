@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawnProcess, terminateProcess } from "@getpaseo/plugin/server";
 import { abortError, GeneratorUnavailableError } from "./errors";
 
 const OUTPUT_LIMIT_BYTES = 1024 * 1024;
@@ -32,29 +32,46 @@ export function sanitizeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return clean;
 }
 
+function collectOutput(stream: NodeJS.ReadableStream): () => string {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  stream.on("data", (chunk: Buffer) => {
+    const remaining = OUTPUT_LIMIT_BYTES - bytes;
+    if (remaining === 0) return;
+    const kept = chunk.subarray(0, remaining);
+    chunks.push(kept);
+    bytes += kept.length;
+  });
+  return () => Buffer.concat(chunks, bytes).toString("utf8");
+}
+
 export const runProcess: RunProcess = (command, args, options) =>
   new Promise((resolve, reject) => {
     if (options.signal.aborted) {
       reject(abortError());
       return;
     }
-    const child = spawn(command, args, {
+    const child = spawnProcess(command, [...args], {
       cwd: options.cwd,
       env: options.env,
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: "pipe",
       detached: process.platform !== "win32",
     });
-    let stdout = "";
-    let stderr = "";
+    const stdout = collectOutput(child.stdout);
+    const stderr = collectOutput(child.stderr);
     let settled = false;
-    const kill = () => {
-      if (child.pid === undefined || child.exitCode !== null) return;
-      try {
-        // Negative pid targets the process group so CLI helpers die too.
-        process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGTERM");
-      } catch {
-        child.kill("SIGTERM");
+    const kill = async () => {
+      if (child.pid === undefined) return;
+      if (process.platform !== "win32") {
+        try {
+          // On POSIX the SDK signals only the child, so signal its detached group first.
+          process.kill(-child.pid, "SIGTERM");
+          return;
+        } catch {
+          // The group can exit before the signal is sent.
+        }
       }
+      await terminateProcess(child, "SIGTERM");
     };
     const finish = (outcome: () => void) => {
       if (settled) return;
@@ -63,23 +80,18 @@ export const runProcess: RunProcess = (command, args, options) =>
       options.signal.removeEventListener("abort", onAbort);
       outcome();
     };
-    const onAbort = () => {
-      kill();
-      finish(() => reject(abortError()));
+    const stop = (reason: Error) => {
+      finish(() => {
+        void kill().catch((error: unknown) => {
+          console.error("[paseo-recap] failed to terminate CLI", error);
+        }).finally(() => reject(reason));
+      });
     };
+    const onAbort = () => stop(abortError());
     const timer = setTimeout(() => {
-      kill();
-      finish(() => reject(new Error(`${command} timed out after ${options.timeoutMs} ms`)));
+      stop(new Error(`${command} timed out after ${options.timeoutMs} ms`));
     }, options.timeoutMs);
     options.signal.addEventListener("abort", onAbort, { once: true });
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      if (stdout.length < OUTPUT_LIMIT_BYTES) stdout += chunk;
-    });
-    child.stderr.on("data", (chunk: string) => {
-      if (stderr.length < OUTPUT_LIMIT_BYTES) stderr += chunk;
-    });
     child.on("error", (error: NodeJS.ErrnoException) => {
       finish(() =>
         reject(
@@ -89,7 +101,7 @@ export const runProcess: RunProcess = (command, args, options) =>
         ),
       );
     });
-    child.on("close", (code) => finish(() => resolve({ code, stdout, stderr })));
+    child.on("close", (code) => finish(() => resolve({ code, stdout: stdout(), stderr: stderr() })));
     child.stdin.on("error", () => undefined);
     child.stdin.end(options.stdin);
   });

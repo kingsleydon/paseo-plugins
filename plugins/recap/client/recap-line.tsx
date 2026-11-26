@@ -1,5 +1,5 @@
 import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
-import { Icon } from "@getpaseo/plugin/client/react-native";
+import { Icon } from "@getpaseo/plugin/client/ui";
 import { useMemo } from "react";
 import { Text, View } from "react-native";
 import type { RecapTimelineData } from "../shared/recap";
