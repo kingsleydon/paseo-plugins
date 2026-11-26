@@ -6,7 +6,7 @@ const prompt = (id: string, label = "Review", text = "Review the changes.") => (
 
 describe("quickPromptsSettings", () => {
   it("starts empty and trims saved labels and prompts", () => {
-    expect(quickPromptsSettings.schema.parse({})).toEqual({ prompts: [], display: "pills" });
+    expect(quickPromptsSettings.schema.parse({})).toEqual({ prompts: [], display: "pills", sendRightAway: true });
     expect(parse([prompt("a1", "  Review ", " Look again.\n")]).data?.prompts).toEqual([
       prompt("a1", "Review", "Look again."),
     ]);
@@ -27,20 +27,23 @@ describe("quickPromptsSettings", () => {
     expect(parse(many).success).toBe(false);
   });
 
-  it("keeps separate pills and the prompts when the display setting is missing or unknown", () => {
+  it("keeps separate pills that send, and the prompts, when settings predate those fields", () => {
     expect(settingsFromRead({ status: "ready", values: { prompts: [prompt("a1")] } })).toEqual({
       prompts: [prompt("a1")],
       display: "pills",
+      sendRightAway: true,
     });
+    expect(
+      settingsFromRead({ status: "ready", values: { prompts: [prompt("a1")], display: "menu", sendRightAway: false } }),
+    ).toEqual({ prompts: [prompt("a1")], display: "menu", sendRightAway: false });
     expect(quickPromptsSettings.schema.safeParse({ display: "menu" }).data?.display).toBe("menu");
-    expect(settingsFromRead({ status: "ready", values: { prompts: [prompt("a1")], display: "grid" } })).toEqual({
-      prompts: [prompt("a1")],
-      display: "pills",
-    });
+    expect(
+      settingsFromRead({ status: "ready", values: { prompts: [prompt("a1")], display: "grid", sendRightAway: "yes" } }),
+    ).toEqual({ prompts: [prompt("a1")], display: "pills", sendRightAway: true });
   });
 
   it("treats invalid stored data as the defaults", () => {
-    const defaults = { prompts: [], display: "pills" };
+    const defaults = { prompts: [], display: "pills", sendRightAway: true };
     expect(settingsFromRead({ status: "ready", values: { prompts: [prompt("a1", "")] } })).toEqual(defaults);
     expect(settingsFromRead({ status: "invalid" })).toEqual(defaults);
   });

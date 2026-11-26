@@ -1,7 +1,9 @@
 import type {
   PluginButton,
   PluginButtonRegistration,
+  PluginComposer,
   PluginComposerPillContribution,
+  PluginComposerSelector,
 } from "@getpaseo/plugin/client";
 import type { QuickPrompt, QuickPromptsSettings } from "../shared/prompts";
 
@@ -11,7 +13,24 @@ const MENU_PILL_ID = "quick-prompts";
 export interface PromptPillHost {
   addComposerPill(contribution: PluginComposerPillContribution): PluginButtonRegistration;
   send(agentId: string, text: string): Promise<void>;
+  /** Puts the text in the agent's composer without sending it. */
+  insert(agentId: string, text: string): Promise<void>;
   openSettings(): void;
+}
+
+/**
+ * Inserts the text at the cursor of the agent's composer and focuses it. Rejects when Paseo has no
+ * composer for the agent or the composer refuses the text or focus; the pill shows that in a toast.
+ */
+export async function insertIntoComposer(
+  composers: (selector: PluginComposerSelector) => readonly Pick<PluginComposer, "insertText" | "focus">[],
+  agentId: string,
+  text: string,
+): Promise<void> {
+  const [composer] = composers({ agentId });
+  if (!composer) throw new Error("This agent's composer is not available.");
+  composer.insertText(text);
+  await composer.focus();
 }
 
 export interface PillAgent {
@@ -63,17 +82,19 @@ export function createPromptPills(host: PromptPillHost): PromptPills {
   const targets = new Map<string, string>();
   const registered = new Map<string, AgentPills>();
   /**
-   * Sends in flight by agent and prompt. Kept outside the registrations, which a reorder or display
-   * switch replaces, so a replacement pill cannot send the same prompt again before the first settles.
+   * Sends and inserts in flight by agent, prompt, and action. Kept outside the registrations, which a
+   * reorder or display switch replaces, so a replacement pill cannot repeat a prompt before the first
+   * press settles.
    */
-  const sending = new Map<string, Promise<void>>();
+  const pending = new Map<string, Promise<void>>();
 
-  const send = (agentId: string, prompt: QuickPrompt): Promise<void> => {
-    const key = JSON.stringify([agentId, prompt.id]);
-    const current = sending.get(key);
+  const run = (agentId: string, prompt: QuickPrompt, sendRightAway: boolean): Promise<void> => {
+    const key = JSON.stringify([agentId, prompt.id, sendRightAway]);
+    const current = pending.get(key);
     if (current) return current;
-    const next = host.send(agentId, prompt.text).finally(() => sending.delete(key));
-    sending.set(key, next);
+    const press = sendRightAway ? host.send(agentId, prompt.text) : host.insert(agentId, prompt.text);
+    const next = press.finally(() => pending.delete(key));
+    pending.set(key, next);
     return next;
   };
 
@@ -88,23 +109,23 @@ export function createPromptPills(host: PromptPillHost): PromptPills {
     }),
   };
 
-  const promptSpec = (prompt: QuickPrompt): PillSpec => ({
+  const promptSpec = (prompt: QuickPrompt, sendRightAway: boolean): PillSpec => ({
     id: `prompt-${prompt.id}`,
-    content: JSON.stringify([prompt.label, prompt.text]),
+    content: JSON.stringify([prompt.label, prompt.text, sendRightAway]),
     button: (agentId) => ({
-      title: `Send quick prompt: ${prompt.label}`,
+      title: `${sendRightAway ? "Send" : "Insert"} quick prompt: ${prompt.label}`,
       icon: "Zap",
       label: prompt.label,
-      // Paseo marks the pill busy until the send settles and shows a failure in a toast.
-      behavior: { kind: "action", onPress: () => send(agentId, prompt) },
+      // Paseo marks the pill busy until the press settles and shows a failure in a toast.
+      behavior: { kind: "action", onPress: () => run(agentId, prompt, sendRightAway) },
     }),
   });
 
-  const menuSpec = (prompts: readonly QuickPrompt[]): PillSpec => ({
+  const menuSpec = (prompts: readonly QuickPrompt[], sendRightAway: boolean): PillSpec => ({
     id: MENU_PILL_ID,
-    content: JSON.stringify(prompts),
+    content: JSON.stringify([prompts, sendRightAway]),
     button: (agentId) => ({
-      title: "Send a quick prompt",
+      title: sendRightAway ? "Send a quick prompt" : "Insert a quick prompt",
       icon: "Zap",
       label: "Prompts",
       behavior: {
@@ -114,7 +135,7 @@ export function createPromptPills(host: PromptPillHost): PromptPills {
             kind: "item" as const,
             id: `prompt-${prompt.id}`,
             title: prompt.label,
-            behavior: { kind: "action" as const, onPress: () => send(agentId, prompt) },
+            behavior: { kind: "action" as const, onPress: () => run(agentId, prompt, sendRightAway) },
           })),
           { kind: "separator", id: "manage-divider" },
           {
@@ -174,9 +195,10 @@ export function createPromptPills(host: PromptPillHost): PromptPills {
   };
 
   return {
-    setSettings({ prompts, display }) {
+    setSettings({ prompts, display, sendRightAway }) {
       if (prompts.length === 0) specs = [addSpec];
-      else specs = display === "menu" ? [menuSpec(prompts)] : prompts.map(promptSpec);
+      else if (display === "menu") specs = [menuSpec(prompts, sendRightAway)];
+      else specs = prompts.map((prompt) => promptSpec(prompt, sendRightAway));
       for (const [agentId, workspaceId] of targets) sync(agentId, workspaceId);
     },
     setAgents(list) {

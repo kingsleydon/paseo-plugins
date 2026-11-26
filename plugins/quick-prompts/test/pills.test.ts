@@ -1,6 +1,6 @@
 import type { PluginButton, PluginComposerPillContribution } from "@getpaseo/plugin/client";
 import { describe, expect, it } from "vitest";
-import { createPromptPills } from "../client/pills";
+import { createPromptPills, insertIntoComposer } from "../client/pills";
 import type { PromptDisplay, QuickPrompt } from "../shared/prompts";
 
 interface FakePill {
@@ -13,6 +13,7 @@ interface FakePill {
 function setup(settle: () => Promise<void> = async () => {}) {
   const pills: FakePill[] = [];
   const sent: Array<[string, string]> = [];
+  const inserted: Array<[string, string]> = [];
   let settingsOpened = 0;
   const controller = createPromptPills({
     addComposerPill({ id, agentId, button }: PluginComposerPillContribution) {
@@ -33,6 +34,9 @@ function setup(settle: () => Promise<void> = async () => {}) {
     send: (agentId, text) => {
       sent.push([agentId, text]);
       return settle();
+    },
+    insert: async (agentId, text) => {
+      inserted.push([agentId, text]);
     },
     openSettings: () => {
       settingsOpened += 1;
@@ -64,12 +68,16 @@ function setup(settle: () => Promise<void> = async () => {}) {
     if (item?.kind !== "item" || item.behavior.kind !== "action") throw new Error(`No menu action ${title}`);
     await item.behavior.onPress();
   };
-  return { controller, pills, sent, shown, press, menu, choose, settingsOpened: () => settingsOpened };
+  return { controller, pills, sent, inserted, shown, press, menu, choose, settingsOpened: () => settingsOpened };
 }
 
 const review: QuickPrompt = { id: "r1", label: "Review", text: "Review the changes." };
 const tests: QuickPrompt = { id: "t1", label: "Tests", text: "Run the tests." };
-const library = (prompts: QuickPrompt[], display: PromptDisplay = "pills") => ({ prompts, display });
+const library = (prompts: QuickPrompt[], display: PromptDisplay = "pills", sendRightAway = true) => ({
+  prompts,
+  display,
+  sendRightAway,
+});
 const agent = (id: string, workspaceId: string | null = "w1", archivedAt: string | null = null) => ({
   id,
   workspaceId,
@@ -233,5 +241,70 @@ describe("createPromptPills", () => {
 
     controller.setSettings(library([review], "pills"));
     expect(shown()).toEqual({ a: ["Review"], b: ["Review"] });
+  });
+
+  it("inserts instead of sending when Send right away is off, from pills and from the menu", async () => {
+    const { controller, pills, sent, inserted, press, choose } = setup();
+    controller.setAgents([agent("a"), agent("b")]);
+    controller.setSettings(library([review, tests], "pills", false));
+    const registered = pills.length;
+    await press("a", "Review");
+    expect(pills.find((pill) => pill.agentId === "a" && pill.button.label === "Review")?.button.title).toBe(
+      "Insert quick prompt: Review",
+    );
+
+    controller.setSettings(library([review, tests], "menu", false));
+    await choose("b", "Tests");
+    expect(inserted).toEqual([
+      ["a", "Review the changes."],
+      ["b", "Run the tests."],
+    ]);
+    expect(sent).toEqual([]);
+
+    // Turning it back on updates the pills in place and sends again.
+    controller.setSettings(library([review, tests], "pills", false));
+    const separate = pills.length;
+    controller.setSettings(library([review, tests], "pills", true));
+    expect(pills.length).toBe(separate);
+    expect(separate).toBeGreaterThan(registered);
+    await press("a", "Tests");
+    expect(sent).toEqual([["a", "Run the tests."]]);
+    expect(inserted).toHaveLength(2);
+  });
+});
+
+describe("insertIntoComposer", () => {
+  const composer = (calls: string[], fail?: "insert" | "focus") => ({
+    insertText: (text: string) => {
+      if (fail === "insert") throw new Error("The composer is locked.");
+      calls.push(`insert:${text}`);
+    },
+    focus: async () => {
+      if (fail === "focus") throw new Error("The composer is not on screen.");
+      calls.push("focus");
+    },
+  });
+
+  it("inserts into the named agent's composer, then focuses it", async () => {
+    const calls: string[] = [];
+    const asked: unknown[] = [];
+    await insertIntoComposer(
+      (selector) => {
+        asked.push(selector);
+        return [composer(calls)];
+      },
+      "a",
+      "Review the changes.",
+    );
+    expect(asked).toEqual([{ agentId: "a" }]);
+    expect(calls).toEqual(["insert:Review the changes.", "focus"]);
+  });
+
+  it("rejects, for the pill to report, when there is no composer or it refuses the text or focus", async () => {
+    await expect(insertIntoComposer(() => [], "a", "x")).rejects.toThrow("This agent's composer is not available.");
+    const calls: string[] = [];
+    await expect(insertIntoComposer(() => [composer(calls, "insert")], "a", "x")).rejects.toThrow("locked");
+    expect(calls).toEqual([]);
+    await expect(insertIntoComposer(() => [composer(calls, "focus")], "a", "x")).rejects.toThrow("not on screen");
   });
 });

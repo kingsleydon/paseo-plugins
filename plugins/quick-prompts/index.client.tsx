@@ -1,6 +1,6 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { followAgents, followPrompts } from "./client/follow";
-import { createPromptPills } from "./client/pills";
+import { createPromptPills, insertIntoComposer } from "./client/pills";
 import { QuickPromptsSettingsScreen } from "./client/settings-screen";
 
 const SETTINGS_SCREEN_ID = "quick-prompts";
@@ -16,6 +16,7 @@ export default function contribute(client: PluginClientContext) {
   const pills = createPromptPills({
     addComposerPill: (contribution) => client.addComposerPill(contribution),
     send: (agentId, text) => client.paseo.agents.ref(agentId).send(text),
+    insert: (agentId, text) => insertIntoComposer((selector) => client.composers(selector), agentId, text),
     openSettings: () => client.openSettings(SETTINGS_SCREEN_ID),
   });
   const lifetime = new AbortController();

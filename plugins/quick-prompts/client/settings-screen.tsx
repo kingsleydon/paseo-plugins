@@ -1,6 +1,16 @@
 import { usePaseo, useRpc, useSettings, type PluginSurfaceProps, type SettingsState } from "@getpaseo/plugin/client";
-import { copyText, Icon, Modal, TextInput as ModalTextInput, useToast } from "@getpaseo/plugin/client/react-native";
-import { SettingsAction, SettingsCard, SettingsSection, SettingsSelect } from "@getpaseo/plugin/client/ui";
+import {
+  copyText,
+  Icon,
+  Modal,
+  TextInput as ModalTextInput,
+  SettingsAction,
+  SettingsCard,
+  SettingsSection,
+  SettingsSelect,
+  SettingsSwitch,
+  useToast,
+} from "@getpaseo/plugin/client/ui";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   ActivityIndicator,
@@ -20,7 +30,7 @@ import {
   type QuickPrompt,
 } from "../shared/prompts";
 import { createAutosave, draftKey, orphanedDrafts, type Autosave, type AutosaveState, type Field } from "./autosave";
-import { movePrompt, setDisplay, settingsContract, type SettingsDoc } from "./edits";
+import { movePrompt, setDisplay, setSendRightAway, settingsContract, type SettingsDoc } from "./edits";
 import { followPromptChanges } from "./follow";
 import { exportPrompts, importPrompts, parseImport } from "./transfer";
 
@@ -626,7 +636,8 @@ function PromptLibrary({
     >
       <Text style={styles.intro}>
         Quick prompts appear above every agent's composer, as separate pills or in one Prompts menu. Choosing one
-        sends the prompt to that agent as your message. Changes save automatically.
+        sends the prompt to that agent, or with Send right away off, puts it in the composer. Changes save
+        automatically.
       </Text>
       <LoadProblem
         settings={settings}
@@ -671,6 +682,12 @@ function PromptLibrary({
           value={state.doc.values.display}
           options={DISPLAY_OPTIONS}
           onValueChange={(display) => void store.save(setDisplay(display))}
+        />
+        <SettingsSwitch
+          label="Send right away"
+          hint="On: a prompt is sent when you tap it. Off: it goes into the composer so you can edit it first."
+          value={state.doc.values.sendRightAway}
+          onValueChange={(sendRightAway) => void store.save(setSendRightAway(sendRightAway))}
         />
       </SettingsCard>
       <TransferPrompts state={state} store={store} theme={theme} styles={styles} />

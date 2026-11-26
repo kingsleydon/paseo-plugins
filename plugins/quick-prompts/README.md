@@ -4,7 +4,8 @@
 
 Save the messages you send often, like "Review the uncommitted changes" or "Run the tests and fix
 failures". Each one becomes a pill above every agent's composer; tapping it sends the prompt to that
-agent as a normal user message.
+agent as a normal user message, or, with **Send right away** off, puts it in that agent's composer so
+you can edit it first.
 
 ## Screenshots
 
@@ -20,6 +21,8 @@ agent as a normal user message.
 
 - **One pill per prompt** on every agent with a workspace, in the order you set, or **one menu
   pill** (Prompts) that lists them all with a **Manage prompts** shortcut.
+- **Send right away** (on by default). Turn it off and a pill or menu item inserts its prompt into
+  that agent's composer at the cursor and focuses the composer, without sending.
 - **Settings screen** under **Settings → Plugins → paseo-quick-prompts → Quick prompts** to add, edit, reorder, and delete
   prompts and choose how they appear. Changes save automatically.
 - **Export and import.** Copy your prompts as text and paste them into Quick prompts on another
@@ -33,7 +36,7 @@ agent as a normal user message.
 
 ## Requirements
 
-- Paseo **0.11.0** or later, with plugins enabled (**Settings → Plugins → Enable plugins**, or
+- Paseo **0.16.0** or later, with plugins enabled (**Settings → Plugins → Enable plugins**, or
   `"pluginsEnabled": true` in `~/.paseo/config.json`)
 
 ## Install
@@ -50,12 +53,12 @@ the latest source with `paseo plugin install github:kingsleydon/paseo-plugins:pl
 | Field | Limit | Description |
 |---|---|---|
 | Label | 1–40 characters | Text on the pill |
-| Prompt | 1–10,000 characters | Message sent to the agent |
+| Prompt | 1–10,000 characters | Message sent to the agent, or inserted into its composer |
 
 Up to 20 prompts. Leading and trailing whitespace is trimmed when you save.
 
 Each prompt is one compact row: label, prompt text (which grows to five lines, then scrolls), and
-move up, move down, and delete buttons. Moving, deleting, and **Show prompts as** save right away.
+move up, move down, and delete buttons. Moving, deleting, **Show prompts as**, and **Send right away** save right away.
 An edited label or prompt saves when the field loses focus, if it is valid; an invalid value shows
 an error under the field and is not saved. New prompts go in the last row and are saved with
 **Add**. The section header shows **Saving…**, **Saved**, or **Not saved** for the latest save.
@@ -69,10 +72,15 @@ edits** card with **Copy** and **Dismiss**.
 **Show prompts as** is **Separate pills** (default) or **One menu pill**. Settings saved before this
 option existed keep separate pills.
 
+**Send right away** is on by default: a pill or menu item sends its prompt. Off, it inserts the
+prompt into that agent's composer at the cursor (replacing any selection) and focuses the composer;
+nothing is sent until you send it. It saves right away. Settings saved before this option existed
+keep sending.
+
 **Export → Copy** copies the prompts' labels and text as JSON. **Import → Import…** opens a dialog
 to paste that text. **Add** puts the prompts after the saved ones, skipping any whose label and prompt
 are already saved; an import that would go over 20 prompts is not saved. **Replace all** replaces the
-saved prompts with the pasted ones. **Show prompts as** is not exported or changed by an import.
+saved prompts with the pasted ones. **Show prompts as** and **Send right away** are not exported or changed by an import.
 
 ## How it works
 
@@ -82,11 +90,14 @@ saved prompts with the pasted ones. **Show prompts as** is not exported or chang
   prompt (or one menu pill) on each non-archived agent that has a workspace. Prompt changes update
   existing pills in place; a reorder of separate pills or a display switch re-registers that agent's
   pills. A failed observation starts again after 1, 5, 15, and 60 seconds, then stops.
-- A pill press or menu choice calls `paseo.agents.ref(agentId).send(text)`. Paseo shows the pill as busy until the
-  send settles and reports failures in a toast. A prompt is not sent to the same agent again while its
-  previous send is pending.
+- A pill press or menu choice calls `paseo.agents.ref(agentId).send(text)`, or, with **Send right
+  away** off, takes the agent's composer from `client.composers({ agentId })` (which reaches it whether
+  or not its tab is open) and calls `insertText(text)` and then `focus()`, which opens the agent if it is
+  not on screen. Paseo shows the pill as busy until the press settles and reports failures (including
+  no composer for the agent) in a toast. A prompt is not sent or inserted to the same agent again
+  while its previous press is pending.
 
-Not supported: pills in the new-agent composer and inserting text into the composer for editing.
+Not supported: pills in the new-agent composer.
 
 ## Development
 
@@ -103,9 +114,9 @@ paseo plugin logs paseo-quick-prompts
 |---|---|
 | `index.server.ts` | Daemon entry: registers the settings document |
 | `index.client.tsx` | App entry: settings screen and composer pills |
-| `client/pills.ts` | Keeps each agent's pills in sync with the saved prompts |
+| `client/pills.ts` | Keeps each agent's pills in sync with the saved prompts, and inserts into a composer |
 | `client/follow.ts` | Follows the agent directory and settings changes |
-| `client/settings-screen.tsx` | Autosaving editor for the prompts and display option, export and import, and the prompt-ideas tip |
+| `client/settings-screen.tsx` | Autosaving editor for the prompts, display, and Send right away options, export and import, and the prompt-ideas tip |
 | `client/autosave.ts` | Save queue for the settings screen: latest values, typed drafts, the new-prompt form, conflict retry |
 | `client/edits.ts` | Prompt edits applied to the latest values |
 | `client/transfer.ts` | Export text, and parsing and applying an import |

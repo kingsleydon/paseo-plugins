@@ -46,6 +46,10 @@ export function setDisplay(display: PromptDisplay): Edit {
   return (values) => ({ ...values, display });
 }
 
+export function setSendRightAway(sendRightAway: boolean): Edit {
+  return (values) => ({ ...values, sendRightAway });
+}
+
 /** The edit applied to `values`, or `null` when it no longer applies or the result would not save. */
 export function applyEdit(edit: Edit, values: QuickPromptsSettings): QuickPromptsSettings | null {
   const next = edit(values);
