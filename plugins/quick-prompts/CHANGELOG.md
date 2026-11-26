@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/kingsleydon/paseo-plugins/compare/quick-prompts-v0.2.0...quick-prompts-v0.3.0) (2026-11-26)
+
+
+### Features
+
+* **quick-prompts:** option to insert prompts instead of sending ([#30](https://github.com/kingsleydon/paseo-plugins/issues/30)) ([f58fd39](https://github.com/kingsleydon/paseo-plugins/commit/f58fd39121ad880f05da97c56aba79b6e690a5ff))
+
 ## [0.2.0](https://github.com/kingsleydon/paseo-plugins/compare/quick-prompts-v0.1.2...quick-prompts-v0.2.0) (2026-10-28)
 
 

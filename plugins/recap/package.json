@@ -1,6 +1,6 @@
 {
   "name": "paseo-recap",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "description": "Writes a short recap of each agent's goal, progress, and next step after every turn, like Claude Code's session recap.",
   "license": "MIT",
   "files": [
