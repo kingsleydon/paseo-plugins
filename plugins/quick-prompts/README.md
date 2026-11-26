@@ -4,8 +4,7 @@
 
 Save the messages you send often, like "Review the uncommitted changes" or "Run the tests and fix
 failures". Each one becomes a pill above every agent's composer; tapping it sends the prompt to that
-agent as a normal user message. The **Quick prompts** composer control lists them too and inserts
-the one you choose into the composer, so you can edit it before sending.
+agent as a normal user message.
 
 ## Screenshots
 
@@ -21,12 +20,6 @@ the one you choose into the composer, so you can edit it before sending.
 
 - **One pill per prompt** on every agent with a workspace, in the order you set, or **one menu
   pill** (Prompts) that lists them all with a **Manage prompts** shortcut.
-- **Composer control.** A **Quick prompts** control in every composer (a running agent's, a new
-  agent's, and the New workspace screen's) opens a searchable list of the prompts. Choosing one
-  inserts its text at the cursor without sending it and puts the cursor back in the composer. With
-  no prompts saved it is an **Add quick prompt** action that opens the settings screen. Paseo shows
-  it in the composer toolbar when there is room and in the composer's overflow sheet otherwise
-  (always on phones).
 - **Settings screen** under **Settings → Plugins → paseo-quick-prompts → Quick prompts** to add, edit, reorder, and delete
   prompts and choose how they appear. Changes save automatically.
 - **Export and import.** Copy your prompts as text and paste them into Quick prompts on another
@@ -40,7 +33,7 @@ the one you choose into the composer, so you can edit it before sending.
 
 ## Requirements
 
-- Paseo **0.16.0** or later, with plugins enabled (**Settings → Plugins → Enable plugins**, or
+- Paseo **0.13.0** or later, with plugins enabled (**Settings → Plugins → Enable plugins**, or
   `"pluginsEnabled": true` in `~/.paseo/config.json`)
 
 ## Install
@@ -93,13 +86,7 @@ saved prompts with the pasted ones. **Show prompts as** is not exported or chang
   send settles and reports failures in a toast. A prompt is not sent to the same agent again while its
   previous send is pending.
 
-- The composer control is registered once with `addComposerItem`. It reads the prompts with
-  `useSettings`, filters them by label and text as you search, and on a choice calls the composer's
-  `insertText(text)` and then `focus()`. It never sends; Paseo shows a failure (for example a locked
-  New workspace composer) in a toast.
-
-Not supported: pills in the new-agent composer, and sending straight from the composer control
-(Paseo's composer API does not say which agent a composer belongs to).
+Not supported: pills in the new-agent composer and inserting text into the composer for editing.
 
 ## Development
 
@@ -115,10 +102,8 @@ paseo plugin logs paseo-quick-prompts
 | Path | Contents |
 |---|---|
 | `index.server.ts` | Daemon entry: registers the settings document |
-| `index.client.tsx` | App entry: settings screen, composer control, and composer pills |
+| `index.client.tsx` | App entry: settings screen and composer pills |
 | `client/pills.ts` | Keeps each agent's pills in sync with the saved prompts |
-| `client/composer-item.tsx` | The Quick prompts composer control |
-| `client/composer-control.ts` | What the composer control lists, searches, and inserts |
 | `client/follow.ts` | Follows the agent directory and settings changes |
 | `client/settings-screen.tsx` | Autosaving editor for the prompts and display option, export and import, and the prompt-ideas tip |
 | `client/autosave.ts` | Save queue for the settings screen: latest values, typed drafts, the new-prompt form, conflict retry |
