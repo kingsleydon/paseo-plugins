@@ -95,6 +95,23 @@ describe("RecapStore", () => {
     expect(records.get("a")?.metadata).not.toHaveProperty(METADATA_KEY);
   });
 
+  it("keeps a newer in-memory recap when the startup scan recovers", async () => {
+    const { openStore, list, write } = await setup("a", "b");
+    const saved = openStore();
+    await saved.set(makeRecap({ summary: "older" }));
+    await saved.set(makeRecap({ agentId: "b" }));
+
+    const store = openStore();
+    list.mockRejectedValueOnce(new Error("scan unavailable"));
+    await expect(store.load(NOW)).rejects.toThrow("scan unavailable");
+    write.mockRejectedValueOnce(new Error("write unavailable"));
+    await store.set(makeRecap({ summary: "newer" }));
+
+    expect(await store.load(NOW)).toEqual(["b"]);
+    expect(store.get("a")?.summary).toBe("newer");
+    expect(store.get("b")).toEqual(makeRecap({ agentId: "b" }));
+  });
+
   it("drops recaps older than the retention window on load", async () => {
     const { openStore, records } = await setup("old", "new");
     const store = openStore();

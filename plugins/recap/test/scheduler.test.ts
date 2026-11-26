@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recapSettings, type RecapSettings, type RecapView, type StoredRecap } from "../shared/recap";
 import type { GeneratedRecap } from "../server/generators";
 import type { AgentTimelineItem } from "../server/paseo-types";
+import { RecapStore } from "../server/store";
 import { NoGeneratorError, RecapSkippedError } from "../server/errors";
 import {
   CHILD_BLOCK_MAX_MS,
@@ -57,8 +58,7 @@ const GATED: Partial<RecapSettings> = { idleDelaySeconds: 120, minTurns: 3, turn
 /** Default wait, but no progress gate, for scenarios that only need one turn. */
 const EVERY_TURN: Partial<RecapSettings> = { minTurns: 1, turnsBetweenRecaps: 1 };
 
-function setup(overrides: Partial<RecapSettings> = GATED) {
-  const store = new MemoryStore();
+function setup(overrides: Partial<RecapSettings> = GATED, store: RecapStoreLike = new MemoryStore()) {
   const settings: RecapSettings = { ...recapSettings.schema.parse({}), ...overrides };
   const generate = vi.fn(
     async (_prompt: string, _signal: AbortSignal, _options: GenerateOptions): Promise<GeneratedRecap> => ({
@@ -113,6 +113,26 @@ afterEach(() => {
 });
 
 describe("RecapScheduler", () => {
+  it("publishes a generated recap and skips CLI retries when metadata cannot be saved", async () => {
+    const log = vi.fn();
+    const setMetadata = vi.fn().mockRejectedValue(new Error("metadata write unavailable"));
+    const store = new RecapStore(() => ({
+      list: async () => ({ entries: [], pageInfo: { nextCursor: null } }),
+      ref: () => ({ refresh: async () => null, setMetadata }),
+    }), "/unused/recaps.json", log);
+    const { scheduler, generate, publish, changes } = setup(EVERY_TURN, store);
+    await endTurn(scheduler, agent("a"), turns(1));
+    await vi.advanceTimersByTimeAsync(10_000 + RETRY_DELAY_MS);
+
+    const recap = store.get("a");
+    expect(recap).toMatchObject({ summary: "Recap text.", stale: false });
+    expect(publish).toHaveBeenCalledExactlyOnceWith(recap);
+    expect(changes.at(-1)).toMatchObject({ state: "idle", recap, error: null });
+    expect(generate).toHaveBeenCalledOnce();
+    expect(setMetadata).toHaveBeenCalledOnce();
+    expect(log).toHaveBeenCalledWith("could not save recap metadata for agent a", "metadata write unavailable");
+  });
+
   it("ignores background agents for automatic recaps and keeps their parent eligible", async () => {
     const { scheduler, generate, store } = setup({
       ...EVERY_TURN, includeSubagents: true, waitForSubagents: true,

@@ -1,6 +1,7 @@
 import { readFile, rename } from "node:fs/promises";
 import { z } from "zod";
 import { StoredRecapSchema, type StoredRecap } from "../shared/recap";
+import { errorMessage } from "./errors";
 import { parseJson } from "./json";
 import type { PaseoApi } from "./paseo-types";
 
@@ -36,13 +37,15 @@ type RecapAgents = {
   };
 };
 
-/** A cache of agent metadata, loaded in pages once and updated after successful writes. */
+/** Recaps remain available in memory when the daemon cannot save their metadata. */
 export class RecapStore {
   readonly #agents: () => RecapAgents;
   readonly #legacyPath: string;
   readonly #log: (message: string, detail?: unknown) => void;
-  #recaps = new Map<string, RecapMetadata>();
+  readonly #recaps = new Map<string, RecapMetadata>();
   readonly #writes = new Map<string, Promise<void>>();
+  // A recovery scan must account for turns and archives that happened before it finished.
+  #activityBeforeLoad: Map<string, "stale" | "archived"> | null = new Map();
 
   constructor(agents: () => RecapAgents, legacyPath: string, log: (message: string, detail?: unknown) => void) {
     this.#agents = agents;
@@ -50,7 +53,7 @@ export class RecapStore {
     this.#log = log;
   }
 
-  async load(now = Date.now()): Promise<void> {
+  async load(now = Date.now()): Promise<string[]> {
     const agents = this.#agents();
     await this.#migrate(agents);
     const recaps = new Map<string, RecapMetadata>();
@@ -66,14 +69,25 @@ export class RecapStore {
         const parsed = RecapMetadataSchema.safeParse(agent.metadata?.[METADATA_KEY]);
         if (!parsed.success || parsed.data.latest.agentId !== agent.id) continue;
         if (now - Date.parse(parsed.data.latest.generatedAt) > RECAP_RETENTION_MS) {
-          await agents.ref(agent.id).setMetadata({ [METADATA_KEY]: null });
+          if (!this.#recaps.has(agent.id) && this.#activityBeforeLoad?.get(agent.id) !== "archived") {
+            await this.#persist(agent.id, null);
+          }
           continue;
         }
         recaps.set(agent.id, parsed.data);
       }
       cursor = pageInfo.nextCursor ?? undefined;
     } while (cursor);
-    this.#recaps = recaps;
+    const restored: string[] = [];
+    for (const [agentId, recap] of recaps) {
+      const activity = this.#activityBeforeLoad?.get(agentId);
+      if (this.#recaps.has(agentId) || activity === "archived") continue;
+      this.#recaps.set(agentId, recap);
+      if (activity === "stale") void this.markStale(agentId);
+      restored.push(agentId);
+    }
+    this.#activityBeforeLoad = null;
+    return restored;
   }
 
   get(agentId: string): StoredRecap | null {
@@ -99,12 +113,16 @@ export class RecapStore {
   }
 
   markStale(agentId: string): Promise<void> {
+    if (this.#activityBeforeLoad && !this.#activityBeforeLoad.has(agentId)) {
+      this.#activityBeforeLoad.set(agentId, "stale");
+    }
     return this.#update(agentId, (recaps) =>
       recaps && !recaps.latest.stale ? { ...recaps, latest: { ...recaps.latest, stale: true } } : recaps,
     );
   }
 
   delete(agentId: string, metadata?: StoreAgent["metadata"]): Promise<void> {
+    this.#activityBeforeLoad?.set(agentId, "archived");
     return this.#update(agentId, () => undefined, metadata?.[METADATA_KEY] !== undefined);
   }
 
@@ -113,13 +131,19 @@ export class RecapStore {
     change: (current?: RecapMetadata) => RecapMetadata | undefined,
     force = false,
   ): Promise<void> {
+    const current = this.#recaps.get(agentId);
+    const next = change(current);
+    if (!force && next === current) return Promise.resolve();
+    if (next) this.#recaps.set(agentId, next);
+    else this.#recaps.delete(agentId);
+    return this.#persist(agentId, next ?? null).catch((error: unknown) => {
+      this.#log(`could not save recap metadata for agent ${agentId}`, errorMessage(error));
+    });
+  }
+
+  #persist(agentId: string, recap: RecapMetadata | null): Promise<void> {
     const write = async () => {
-      const current = this.#recaps.get(agentId);
-      const next = change(current);
-      if (!force && next === current) return;
-      await this.#agents().ref(agentId).setMetadata({ [METADATA_KEY]: next ?? null });
-      if (next) this.#recaps.set(agentId, next);
-      else this.#recaps.delete(agentId);
+      await this.#agents().ref(agentId).setMetadata({ [METADATA_KEY]: recap });
     };
     const previous = this.#writes.get(agentId);
     const result = previous ? previous.then(write, write) : write();
@@ -147,9 +171,10 @@ export class RecapStore {
     for (const [agentId, recaps] of Object.entries(parsed.data.agents)) {
       const handle = agents.ref(agentId);
       const result = await handle.refresh();
-      if (result?.agent.id !== agentId || result.agent.metadata?.[METADATA_KEY] !== undefined) continue;
-      await handle.setMetadata({
-        [METADATA_KEY]: { version: 1, latest: recaps.latest, previous: recaps.previous.slice(0, PREVIOUS_RECAPS_KEPT) },
+      if (result?.agent.id !== agentId || result.agent.metadata?.[METADATA_KEY] !== undefined ||
+          this.#activityBeforeLoad?.get(agentId) === "archived") continue;
+      await this.#persist(agentId, this.#recaps.get(agentId) ?? {
+        version: 1, latest: recaps.latest, previous: recaps.previous.slice(0, PREVIOUS_RECAPS_KEPT),
       });
     }
     // Preserve the source if any read or write failed. Already migrated entries are skipped on retry.

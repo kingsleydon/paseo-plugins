@@ -24,6 +24,8 @@ import {
 } from "./shared/recap";
 
 const TIMELINE_FETCH_LIMIT = 500;
+const INITIAL_LOAD_RETRY_MS = 1_000;
+const MAX_LOAD_RETRY_MS = 30_000;
 
 function log(message: string, detail?: unknown): void {
   if (detail === undefined) console.error(`[paseo-recap] ${message}`);
@@ -113,17 +115,31 @@ export default function contribute(server: PluginServerContext) {
   });
 
   let ready: Promise<void> | undefined;
+  let loadRetry: ReturnType<typeof setTimeout> | undefined;
+  let retryDelay = INITIAL_LOAD_RETRY_MS;
+  let disposed = false;
+  const loadStore = async (): Promise<void> => {
+    try {
+      const restored = await store.load();
+      if (!disposed) {
+        for (const agentId of restored) stream.update(scheduler.view(agentId));
+      }
+    } catch (error) {
+      log("could not load saved recaps", errorMessage(error));
+      if (disposed) return;
+      loadRetry = setTimeout(() => void loadStore(), retryDelay);
+      retryDelay = Math.min(retryDelay * 2, MAX_LOAD_RETRY_MS);
+    }
+  };
   const initialize = (api: PaseoApi): Promise<void> => {
     paseo = api;
     // The SDK supplies the connection with the first hook or client request.
     ready ??= (async () => {
-      await mkdir(tempRoot, { recursive: true, mode: 0o700 });
-      await store.load();
-    })().catch((error: unknown) => {
-      ready = undefined;
-      log("startup failed", errorMessage(error));
-      throw error;
-    });
+      await mkdir(tempRoot, { recursive: true, mode: 0o700 }).catch((error: unknown) => {
+        log("could not create recap temp directory", errorMessage(error));
+      });
+      if (!disposed) await loadStore();
+    })();
     return ready;
   };
 
@@ -177,6 +193,8 @@ export default function contribute(server: PluginServerContext) {
   });
 
   return () => {
+    disposed = true;
+    clearTimeout(loadRetry);
     for (const unsubscribe of unsubscribers) unsubscribe();
     scheduler.dispose();
   };
