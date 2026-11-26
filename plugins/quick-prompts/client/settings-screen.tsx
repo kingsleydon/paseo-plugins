@@ -1,6 +1,15 @@
 import { usePaseo, useRpc, useSettings, type PluginSurfaceProps, type SettingsState } from "@getpaseo/plugin/client";
-import { copyText, Icon, Modal, TextInput as ModalTextInput, useToast } from "@getpaseo/plugin/client/react-native";
-import { SettingsAction, SettingsCard, SettingsSection, SettingsSelect } from "@getpaseo/plugin/client/ui";
+import {
+  copyText,
+  Icon,
+  Modal,
+  TextInput as ModalTextInput,
+  SettingsAction,
+  SettingsCard,
+  SettingsSection,
+  SettingsSelect,
+  useToast,
+} from "@getpaseo/plugin/client/ui";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   ActivityIndicator,

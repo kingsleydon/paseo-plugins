@@ -1,4 +1,5 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
+import { createQuickPromptsControl } from "./client/composer-item";
 import { followAgents, followPrompts } from "./client/follow";
 import { createPromptPills } from "./client/pills";
 import { QuickPromptsSettingsScreen } from "./client/settings-screen";
@@ -13,10 +14,16 @@ export default function contribute(client: PluginClientContext) {
     Component: QuickPromptsSettingsScreen,
   });
 
+  const openSettings = () => client.openSettings(SETTINGS_SCREEN_ID);
+  const removeComposerItem = client.addComposerItem({
+    id: "quick-prompts",
+    Component: createQuickPromptsControl(openSettings),
+  });
+
   const pills = createPromptPills({
     addComposerPill: (contribution) => client.addComposerPill(contribution),
     send: (agentId, text) => client.paseo.agents.ref(agentId).send(text),
-    openSettings: () => client.openSettings(SETTINGS_SCREEN_ID),
+    openSettings,
   });
   const lifetime = new AbortController();
   followAgents(client, pills, lifetime.signal);
@@ -25,6 +32,7 @@ export default function contribute(client: PluginClientContext) {
   return () => {
     lifetime.abort();
     pills.removeAll();
+    removeComposerItem();
     removeSettings();
   };
 }
