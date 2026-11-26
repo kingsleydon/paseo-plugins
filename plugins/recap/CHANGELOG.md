@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/kingsleydon/paseo-plugins/compare/recap-v0.2.5...recap-v0.3.0) (2026-11-26)
+
+
+### Features
+
+* **recap:** update to Paseo plugin SDK 0.17 ([#31](https://github.com/kingsleydon/paseo-plugins/issues/31)) ([3015bed](https://github.com/kingsleydon/paseo-plugins/commit/3015bed8ed322d6eb169c7f7783aa2cbe92605aa))
+
 ## [0.2.5](https://github.com/kingsleydon/paseo-plugins/compare/recap-v0.2.4...recap-v0.2.5) (2026-10-27)
 
 
